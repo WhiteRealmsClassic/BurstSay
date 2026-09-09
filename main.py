@@ -75,7 +75,7 @@ def interactions():
             count = options.get("count", 1)
 
             # Safety cap
-            count = max(1, min(int(count), 10))
+            count = max(1, min(int(count), 100))
 
             # We cannot make one interaction response produce
             # multiple Discord messages. For now, return a single
