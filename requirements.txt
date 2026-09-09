@@ -1,0 +1,4 @@
+Flask
+PyNaCl
+python-dotenv
+gunicorn
