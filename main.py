@@ -1,4 +1,5 @@
 import os
+import json
 import random
 
 from flask import Flask, request, jsonify
@@ -15,6 +16,21 @@ if not PUBLIC_KEY:
     raise RuntimeError("DISCORD_PUBLIC_KEY is missing from .env")
 
 verify_key = VerifyKey(bytes.fromhex(PUBLIC_KEY))
+
+
+# Load Nuke message from JSON
+try:
+    with open("nuke.json", "r", encoding="utf-8") as file:
+        NUKE_DATA = json.load(file)
+except FileNotFoundError:
+    raise RuntimeError("nuke.json is missing")
+except json.JSONDecodeError:
+    raise RuntimeError("nuke.json contains invalid JSON")
+
+NUKE_MESSAGE = NUKE_DATA.get(
+    "message",
+    "# Nuked by Whiteify Bot 💥"
+)
 
 
 GLAZE_MESSAGES = [
@@ -162,6 +178,9 @@ def interactions():
                                 "scientifically accurate compliment about White. "
                                 "Obviously.\n\n"
 
+                                "💣 **/nuke**\n"
+                                "Deploy the ultimate Whiteify Bot nuke.\n\n"
+
                                 "ℹ️ **/about**\n"
                                 "Displays information about BurstSay, its "
                                 "creator, and its commands.\n\n"
@@ -180,6 +199,15 @@ def interactions():
                             }
                         }
                     ]
+                }
+            })
+
+        # /nuke
+        if name == "nuke":
+            return jsonify({
+                "type": 4,
+                "data": {
+                    "content": NUKE_MESSAGE
                 }
             })
 
