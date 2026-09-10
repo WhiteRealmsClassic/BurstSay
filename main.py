@@ -1,7 +1,10 @@
 import os
 import json
 import random
+import time
+import threading
 
+import requests
 from flask import Flask, request, jsonify
 from nacl.signing import VerifyKey
 from dotenv import load_dotenv
@@ -82,6 +85,28 @@ def verify_discord_request():
         return jsonify({
             "error": "Invalid request signature"
         }), 401
+
+
+# =========================
+# Delayed Nuke Sender
+# =========================
+
+def send_delayed_nuke(application_id, interaction_token, count):
+    webhook_url = (
+        f"https://discord.com/api/v10/webhooks/"
+        f"{application_id}/{interaction_token}"
+    )
+
+    for _ in range(count):
+        try:
+            requests.post(
+                webhook_url,
+                json={"content": NUKE_MESSAGE}
+            )
+        except Exception:
+            pass
+
+        time.sleep(2)
 
 
 # =========================
@@ -232,8 +257,8 @@ def interactions():
                                 "Obviously.\n\n"
 
                                 "💣 **/nuke**\n"
-                                "Repeat the Whiteify Bot nuke message inside "
-                                "a single response.\n\n"
+                                "Repeat the Whiteify Bot nuke message, spaced "
+                                "**2 seconds apart**, up to **20 times**.\n\n"
 
                                 "ℹ️ **/about**\n"
                                 "Displays information about BurstSay, its "
@@ -264,21 +289,24 @@ def interactions():
 
             count = options.get("count", 1)
 
-            # Maximum 10 repetitions
+            # Maximum 20 repetitions
             count = max(
                 1,
-                min(int(count), 100)
+                min(int(count), 20)
             )
 
-            content = "\n".join(
-                [NUKE_MESSAGE] * count
-            )
+            application_id = data.get("application_id")
+            interaction_token = data.get("token")
 
+            threading.Thread(
+                target=send_delayed_nuke,
+                args=(application_id, interaction_token, count),
+                daemon=True
+            ).start()
+
+            # Must respond within 3 seconds — defer, then follow up
             return jsonify({
-                "type": 4,
-                "data": {
-                    "content": content
-                }
+                "type": 5
             })
 
     # =========================
