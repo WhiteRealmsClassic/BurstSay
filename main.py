@@ -13,6 +13,7 @@ from nacl.signing import VerifyKey
 from dotenv import load_dotenv
 
 import chess
+import akinator
 
 from chess_game import (
     get_game,
@@ -40,14 +41,12 @@ BOT_TOKEN = os.getenv(
 
 
 if not PUBLIC_KEY:
-
     raise RuntimeError(
         "DISCORD_PUBLIC_KEY is missing from .env"
     )
 
 
 if not BOT_TOKEN:
-
     raise RuntimeError(
         "DISCORD_TOKEN is missing from .env"
     )
@@ -67,11 +66,425 @@ app = Flask(__name__)
 # PENDING CHESS INVITES
 # ============================================================
 
-# opponent_id -> invite information
-
 PENDING_INVITES = {}
 
 PENDING_INVITES_LOCK = threading.Lock()
+
+
+# ============================================================
+# AKINATOR
+# ============================================================
+
+AKINATOR_GAMES = {}
+
+AKINATOR_LOCK = threading.Lock()
+
+AKINATOR_THEMES = {
+    "character": "c",
+    "animal": "a",
+    "object": "o",
+}
+
+AKINATOR_THEME_NAMES = {
+    "c": "Character",
+    "a": "Animal",
+    "o": "Object",
+}
+
+
+def get_akinator_game(user_id):
+
+    with AKINATOR_LOCK:
+
+        return AKINATOR_GAMES.get(
+            str(user_id)
+        )
+
+
+def set_akinator_game(
+    user_id,
+    game
+):
+
+    with AKINATOR_LOCK:
+
+        AKINATOR_GAMES[
+            str(user_id)
+        ] = game
+
+
+def delete_akinator_game(
+    user_id
+):
+
+    with AKINATOR_LOCK:
+
+        AKINATOR_GAMES.pop(
+            str(user_id),
+            None
+        )
+
+
+def akinator_buttons(
+    user_id
+):
+
+    uid = str(user_id)
+
+    return [
+
+        {
+            "type": 1,
+
+            "components": [
+
+                {
+                    "type": 2,
+
+                    "style": 3,
+
+                    "label":
+                    "Yes",
+
+                    "emoji": {
+                        "name":
+                        "✅"
+                    },
+
+                    "custom_id":
+                    f"aki_answer:yes:{uid}"
+                },
+
+                {
+                    "type": 2,
+
+                    "style": 4,
+
+                    "label":
+                    "No",
+
+                    "emoji": {
+                        "name":
+                        "❌"
+                    },
+
+                    "custom_id":
+                    f"aki_answer:no:{uid}"
+                },
+
+                {
+                    "type": 2,
+
+                    "style": 2,
+
+                    "label":
+                    "Don't know",
+
+                    "emoji": {
+                        "name":
+                        "❓"
+                    },
+
+                    "custom_id":
+                    f"aki_answer:idk:{uid}"
+                }
+
+            ]
+        },
+
+        {
+            "type": 1,
+
+            "components": [
+
+                {
+                    "type": 2,
+
+                    "style": 1,
+
+                    "label":
+                    "Probably",
+
+                    "emoji": {
+                        "name":
+                        "🤔"
+                    },
+
+                    "custom_id":
+                    f"aki_answer:probably:{uid}"
+                },
+
+                {
+                    "type": 2,
+
+                    "style": 2,
+
+                    "label":
+                    "Probably not",
+
+                    "emoji": {
+                        "name":
+                        "🙅"
+                    },
+
+                    "custom_id":
+                    f"aki_answer:probably_not:{uid}"
+                }
+
+            ]
+        }
+
+    ]
+
+
+def akinator_question_data(
+    game,
+    user_id,
+    theme_name,
+    intro=False
+):
+
+    try:
+
+        progression = float(
+            getattr(
+                game,
+                "progression",
+                0
+            )
+        )
+
+    except Exception:
+
+        progression = 0
+
+
+    try:
+
+        step = int(
+            getattr(
+                game,
+                "step",
+                0
+            )
+        ) + 1
+
+    except Exception:
+
+        step = 1
+
+
+    if intro:
+
+        content = (
+
+            f"🧞 **BurstSay Akinator — "
+            f"{theme_name}**\n\n"
+
+            "Think of something and keep it secret.\n"
+            "I'll try to figure it out.\n\n"
+
+        )
+
+    else:
+
+        content = (
+
+            f"🧞 **BurstSay Akinator — "
+            f"{theme_name}**\n\n"
+
+        )
+
+
+    content += (
+
+        f"**Question {step}**\n"
+
+        f"> {game.question}\n\n"
+
+        f"🧠 **Progress:** "
+        f"{progression:.0f}%"
+
+    )
+
+
+    return {
+
+        "content":
+        content,
+
+        "components":
+        akinator_buttons(
+            user_id
+        )
+
+    }
+
+
+def akinator_guess_data(
+    game,
+    user_id
+):
+
+    name = (
+
+        getattr(
+            game,
+            "name_proposition",
+            None
+        )
+
+        or
+
+        "something"
+
+    )
+
+
+    description = (
+
+        getattr(
+            game,
+            "description_proposition",
+            None
+        )
+
+        or
+
+        "I don't have a description for this guess."
+
+    )
+
+
+    photo = (
+
+        getattr(
+            game,
+            "photo",
+            None
+        )
+
+        or
+
+        None
+
+    )
+
+
+    embed = {
+
+        "title":
+        "🔮 I think I know it...",
+
+        "description": (
+
+            f"### {name}\n\n"
+
+            f"{description}"
+
+        ),
+
+        "footer": {
+
+            "text":
+            "Was I right?"
+
+        }
+
+    }
+
+
+    if photo:
+
+        embed["thumbnail"] = {
+
+            "url":
+            photo
+
+        }
+
+
+    return {
+
+        "content":
+        "🧞 **My guess is...**",
+
+        "embeds": [
+            embed
+        ],
+
+        "components": [
+
+            {
+
+                "type": 1,
+
+                "components": [
+
+                    {
+
+                        "type": 2,
+
+                        "style": 3,
+
+                        "label":
+                        "Yes, you got it!",
+
+                        "emoji": {
+                            "name":
+                            "✅"
+                        },
+
+                        "custom_id":
+                        f"aki_guess:yes:{user_id}"
+
+                    },
+
+                    {
+
+                        "type": 2,
+
+                        "style": 4,
+
+                        "label":
+                        "No",
+
+                        "emoji": {
+                            "name":
+                            "❌"
+                        },
+
+                        "custom_id":
+                        f"aki_guess:no:{user_id}"
+
+                    }
+
+                ]
+
+            }
+
+        ]
+
+    }
+
+
+def start_akinator(
+    user_id,
+    theme
+):
+
+    game = akinator.Akinator()
+
+    game.start_game(
+        theme=theme
+    )
+
+    set_akinator_game(
+        user_id,
+        game
+    )
+
+    return game
 
 
 # ============================================================
@@ -467,7 +880,8 @@ def build_chess_components(
 
                         "style": 2,
 
-                        "label": "New Game",
+                        "label":
+                        "New Game",
 
                         "custom_id":
                         "chess_new"
@@ -598,9 +1012,6 @@ def build_chess_components(
 
             })
 
-
-        # Discord select menus max 25 options.
-        # Split them into multiple rows.
 
         for index in range(
 
@@ -1070,6 +1481,7 @@ def find_guild_member(
             )
             or
             ""
+
         ).lower()
 
 
@@ -1080,6 +1492,7 @@ def find_guild_member(
             )
             or
             ""
+
         ).lower()
 
 
@@ -1090,6 +1503,7 @@ def find_guild_member(
             )
             or
             ""
+
         ).lower()
 
 
@@ -1399,6 +1813,9 @@ def interactions():
                                 "♟️ **/chess**\n"
                                 "Play against BurstSay or another player.\n\n"
 
+                                "🧞 **/akinator**\n"
+                                "Let BurstSay guess a character, animal, or object.\n\n"
+
                                 "💣 **/nuke**\n"
                                 "Send the nuke message.\n\n"
 
@@ -1475,6 +1892,98 @@ def interactions():
             return jsonify({
 
                 "type": 5
+
+            })
+
+
+        # ====================================================
+        # AKINATOR
+        # ====================================================
+
+        if name == "akinator":
+
+            selected_theme = options.get(
+                "theme",
+                "character"
+            )
+
+
+            theme = AKINATOR_THEMES.get(
+                selected_theme
+            )
+
+
+            if theme is None:
+
+                return error_response(
+                    "❌ Invalid Akinator category."
+                )
+
+
+            if not user_id:
+
+                return error_response(
+                    "❌ Could not identify you."
+                )
+
+
+            if get_akinator_game(
+                user_id
+            ):
+
+                return error_response(
+
+                    "🧞 **You're already playing Akinator.**\n\n"
+
+                    "Finish your current game first."
+
+                )
+
+
+            try:
+
+                game = start_akinator(
+
+                    user_id,
+
+                    theme
+
+                )
+
+            except Exception as error:
+
+                print(
+                    "Akinator start error:",
+                    repr(error)
+                )
+
+                return error_response(
+
+                    "❌ **Akinator couldn't start.**\n\n"
+
+                    "The Akinator service may be temporarily unavailable."
+
+                )
+
+
+            return jsonify({
+
+                "type": 4,
+
+                "data":
+                akinator_question_data(
+
+                    game,
+
+                    user_id,
+
+                    AKINATOR_THEME_NAMES[
+                        theme
+                    ],
+
+                    intro=True
+
+                )
 
             })
 
@@ -1596,6 +2105,444 @@ def interactions():
             return error_response(
                 "❌ Could not identify you."
             )
+
+
+        # ====================================================
+        # AKINATOR ANSWERS
+        # ====================================================
+
+        if custom_id.startswith(
+            "aki_answer:"
+        ):
+
+            parts = custom_id.split(
+                ":"
+            )
+
+
+            if len(parts) != 3:
+
+                return error_response(
+                    "❌ Invalid Akinator button."
+                )
+
+
+            action = parts[1]
+
+            button_user_id = parts[2]
+
+
+            if str(user_id) != str(
+                button_user_id
+            ):
+
+                return error_response(
+
+                    "🔒 **This isn't your Akinator game.**\n"
+
+                    "Only the player who started it can answer."
+
+                )
+
+
+            game = get_akinator_game(
+                user_id
+            )
+
+
+            if not game:
+
+                return error_response(
+
+                    "❌ **Your Akinator game no longer exists.**\n\n"
+
+                    "Start a new game with `/akinator`."
+
+                )
+
+
+            answer_map = {
+
+                "yes":
+                "y",
+
+                "no":
+                "n",
+
+                "idk":
+                "i",
+
+                "probably":
+                "p",
+
+                "probably_not":
+                "pn"
+
+            }
+
+
+            answer = answer_map.get(
+                action
+            )
+
+
+            if answer is None:
+
+                return error_response(
+                    "❌ Invalid Akinator answer."
+                )
+
+
+            try:
+
+                game.answer(
+                    answer
+                )
+
+            except Exception as error:
+
+                print(
+
+                    "Akinator answer error:",
+
+                    repr(error)
+
+                )
+
+
+                delete_akinator_game(
+                    user_id
+                )
+
+
+                return error_response(
+
+                    "❌ Akinator encountered an error.\n\n"
+
+                    "Start a new game with `/akinator`."
+
+                )
+
+
+            try:
+
+                progression = float(
+                    getattr(
+                        game,
+                        "progression",
+                        0
+                    )
+                )
+
+            except Exception:
+
+                progression = 0
+
+
+            # ------------------------------------------------
+            # MAKE A GUESS
+            # ------------------------------------------------
+
+            if (
+
+                getattr(
+                    game,
+                    "finished",
+                    False
+                )
+
+                or
+
+                progression >= 85
+
+            ):
+
+                try:
+
+                    game.win()
+
+                except Exception as error:
+
+                    print(
+
+                        "Akinator win error:",
+
+                        repr(error)
+
+                    )
+
+
+                    delete_akinator_game(
+                        user_id
+                    )
+
+
+                    return error_response(
+
+                        "❌ Akinator couldn't make a guess.\n\n"
+
+                        "Start another game with `/akinator`."
+
+                    )
+
+
+                return jsonify({
+
+                    "type": 7,
+
+                    "data":
+                    akinator_guess_data(
+
+                        game,
+
+                        user_id
+
+                    )
+
+                })
+
+
+            # ------------------------------------------------
+            # NEXT QUESTION
+            # ------------------------------------------------
+
+            theme = getattr(
+
+                game,
+
+                "theme",
+
+                "c"
+
+            )
+
+
+            theme_name = (
+
+                AKINATOR_THEME_NAMES.get(
+
+                    theme,
+
+                    "Akinator"
+
+                )
+
+            )
+
+
+            return jsonify({
+
+                "type": 7,
+
+                "data":
+                akinator_question_data(
+
+                    game,
+
+                    user_id,
+
+                    theme_name
+
+                )
+
+            })
+
+
+        # ====================================================
+        # AKINATOR GUESS
+        # ====================================================
+
+        if custom_id.startswith(
+            "aki_guess:"
+        ):
+
+            parts = custom_id.split(
+                ":"
+            )
+
+
+            if len(parts) != 3:
+
+                return error_response(
+                    "❌ Invalid Akinator guess button."
+                )
+
+
+            result = parts[1]
+
+            button_user_id = parts[2]
+
+
+            if str(user_id) != str(
+                button_user_id
+            ):
+
+                return error_response(
+
+                    "🔒 **This isn't your Akinator game.**"
+
+                )
+
+
+            game = get_akinator_game(
+                user_id
+            )
+
+
+            if not game:
+
+                return error_response(
+
+                    "❌ **Your Akinator game has expired.**"
+
+                )
+
+
+            # ------------------------------------------------
+            # CORRECT
+            # ------------------------------------------------
+
+            if result == "yes":
+
+                guessed_name = (
+
+                    getattr(
+
+                        game,
+
+                        "name_proposition",
+
+                        "your answer"
+
+                    )
+
+                )
+
+
+                delete_akinator_game(
+                    user_id
+                )
+
+
+                return jsonify({
+
+                    "type": 7,
+
+                    "data": {
+
+                        "content": (
+
+                            "🎯 **I GOT IT!**\n\n"
+
+                            f"🧞 I guessed "
+                            f"**{guessed_name}**.\n\n"
+
+                            "Humanity remains predictable. 💀"
+
+                        ),
+
+                        "components":
+                        []
+
+                    }
+
+                })
+
+
+            # ------------------------------------------------
+            # WRONG
+            # ------------------------------------------------
+
+            if result == "no":
+
+                theme = getattr(
+
+                    game,
+
+                    "theme",
+
+                    "c"
+
+                )
+
+
+                try:
+
+                    new_game = (
+                        akinator.Akinator()
+                    )
+
+
+                    new_game.start_game(
+                        theme=theme
+                    )
+
+
+                    set_akinator_game(
+
+                        user_id,
+
+                        new_game
+
+                    )
+
+
+                    theme_name = (
+
+                        AKINATOR_THEME_NAMES.get(
+
+                            theme,
+
+                            "Akinator"
+
+                        )
+
+                    )
+
+
+                    return jsonify({
+
+                        "type": 7,
+
+                        "data":
+                        akinator_question_data(
+
+                            new_game,
+
+                            user_id,
+
+                            theme_name,
+
+                            intro=False
+
+                        )
+
+                    })
+
+
+                except Exception as error:
+
+                    print(
+
+                        "Akinator restart error:",
+
+                        repr(error)
+
+                    )
+
+
+                    delete_akinator_game(
+                        user_id
+                    )
+
+
+                    return error_response(
+
+                        "❌ I couldn't continue the game.\n\n"
+
+                        "Try `/akinator` again."
+
+                    )
 
 
         # ====================================================
@@ -1781,10 +2728,6 @@ def interactions():
             )
 
 
-            # ------------------------------------------------
-            # Remove old games
-            # ------------------------------------------------
-
             delete_game(
                 challenger_id
             )
@@ -1794,10 +2737,6 @@ def interactions():
                 user_id
             )
 
-
-            # ------------------------------------------------
-            # Create shared game
-            # ------------------------------------------------
 
             game = create_game(
 
@@ -1829,10 +2768,6 @@ def interactions():
 
                 )
 
-
-            # ------------------------------------------------
-            # Update original challenge message
-            # ------------------------------------------------
 
             threading.Thread(
 
@@ -1912,7 +2847,7 @@ def interactions():
 
 
         # ----------------------------------------------------
-        # THE SECURITY CHECK
+        # SECURITY CHECK
         # ----------------------------------------------------
 
         if not game:
@@ -2497,11 +3432,6 @@ def interactions():
                 )
 
 
-            # ------------------------------------------------
-            # Check whether either player is already in
-            # a game.
-            # ------------------------------------------------
-
             if get_game(
                 challenger_id
             ):
@@ -2524,10 +3454,6 @@ def interactions():
                 )
 
 
-            # ------------------------------------------------
-            # Save invitation
-            # ------------------------------------------------
-
             with PENDING_INVITES_LOCK:
 
                 PENDING_INVITES[
@@ -2548,10 +3474,6 @@ def interactions():
 
                 }
 
-
-            # ------------------------------------------------
-            # Challenge message
-            # ------------------------------------------------
 
             return jsonify({
 
