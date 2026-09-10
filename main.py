@@ -24,25 +24,18 @@ from chess_game import (
 
 
 # ============================================================
-# ENVIRONMENT
+# ENV
 # ============================================================
 
 load_dotenv()
 
 
-# ============================================================
-# FLASK
-# ============================================================
-
-app = Flask(__name__)
-
-
-# ============================================================
-# DISCORD PUBLIC KEY
-# ============================================================
-
 PUBLIC_KEY = os.getenv(
     "DISCORD_PUBLIC_KEY"
+)
+
+BOT_TOKEN = os.getenv(
+    "DISCORD_TOKEN"
 )
 
 
@@ -53,13 +46,36 @@ if not PUBLIC_KEY:
     )
 
 
+if not BOT_TOKEN:
+
+    raise RuntimeError(
+        "DISCORD_TOKEN is missing from .env"
+    )
+
+
 verify_key = VerifyKey(
-    bytes.fromhex(PUBLIC_KEY)
+    bytes.fromhex(
+        PUBLIC_KEY
+    )
 )
 
 
+app = Flask(__name__)
+
+
 # ============================================================
-# NUKE MESSAGE
+# PENDING CHESS INVITES
+# ============================================================
+
+# opponent_id -> invite information
+
+PENDING_INVITES = {}
+
+PENDING_INVITES_LOCK = threading.Lock()
+
+
+# ============================================================
+# NUKE
 # ============================================================
 
 try:
@@ -70,7 +86,9 @@ try:
         encoding="utf-8"
     ) as file:
 
-        NUKE_DATA = json.load(file)
+        NUKE_DATA = json.load(
+            file
+        )
 
 except FileNotFoundError:
 
@@ -86,8 +104,11 @@ except json.JSONDecodeError:
 
 
 NUKE_MESSAGE = NUKE_DATA.get(
+
     "message",
+
     "# Nuked by Whiteify Bot 💥"
+
 )
 
 
@@ -116,80 +137,12 @@ GLAZE_MESSAGES = [
     "🔥 `likewhiteforever` isn't just a Discord username. It's a warning to every bug in the codebase.",
 
     "🌟 **White** is proof that someone can simultaneously create something completely unnecessary and somehow make it awesome.",
+
 ]
 
 
 # ============================================================
-# CHESS TRASH TALK
-# ============================================================
-
-CHESS_MESSAGES = {
-
-    "player_move": [
-
-        "Interesting move. Humanity continues to surprise me.",
-
-        "I'll allow it. For now. ♟️",
-
-        "Not terrible. Suspiciously competent.",
-
-        "You actually know how chess works. Concerning.",
-
-        "That move has been accepted by the council of pixels.",
-    ],
-
-
-    "bot_move": [
-
-        "Your turn. Try not to embarrass yourself.",
-
-        "♟️ Your move, grandmaster.",
-
-        "I have moved a piece. This is becoming serious.",
-
-        "Your move. The board awaits your questionable decision.",
-
-        "Think carefully. I have absolutely no mercy.",
-    ],
-
-
-    "win": [
-
-        "CHECKMATE. 🗿",
-
-        "Game over. The board has spoken.",
-
-        "You lost to BurstSay. This information will be remembered.",
-
-        "♟️ Checkmate. Humanity has fallen once again.",
-    ],
-
-
-    "loss": [
-
-        "You actually beat me. I am choosing to blame the hardware.",
-
-        "CHECKMATE. Fine. You win. 😭",
-
-        "You won. This is deeply inconvenient.",
-
-        "Apparently you can play chess. Respect.",
-    ],
-
-
-    "draw": [
-
-        "Draw. Neither of us gets bragging rights.",
-
-        "The board refuses to choose a winner.",
-
-        "♟️ Stalemate. Humanity survives another day.",
-    ],
-}
-
-
-# ============================================================
-# DISCORD REQUEST VERIFICATION
+# DISCORD VERIFICATION
 # ============================================================
 
 @app.before_request
@@ -213,7 +166,10 @@ def verify_discord_request():
     if not signature or not timestamp:
 
         return jsonify({
-            "error": "Missing signature"
+
+            "error":
+            "Missing signature"
+
         }), 401
 
 
@@ -223,88 +179,173 @@ def verify_discord_request():
     try:
 
         verify_key.verify(
-            timestamp.encode() + body,
-            bytes.fromhex(signature)
+
+            timestamp.encode()
+            + body,
+
+            bytes.fromhex(
+                signature
+            )
+
         )
 
     except Exception:
 
         return jsonify({
-            "error": "Invalid request signature"
+
+            "error":
+            "Invalid request signature"
+
         }), 401
 
 
 # ============================================================
-# USER ID HELPER
+# USER ID
 # ============================================================
 
 def get_user_id(data):
-
-    # --------------------------------------------------------
-    # Server / guild interaction
-    # --------------------------------------------------------
 
     member = data.get(
         "member"
     )
 
 
-    if isinstance(member, dict):
+    if isinstance(
+        member,
+        dict
+    ):
 
         user = member.get(
             "user"
         )
 
 
-        if isinstance(user, dict):
+        if isinstance(
+            user,
+            dict
+        ):
 
-            user_id = user.get(
-                "id"
-            )
+            if user.get("id"):
 
+                return str(
+                    user["id"]
+                )
 
-            if user_id:
-
-                return str(user_id)
-
-
-    # --------------------------------------------------------
-    # DM / GDM interaction
-    # --------------------------------------------------------
 
     user = data.get(
         "user"
     )
 
 
-    if isinstance(user, dict):
+    if isinstance(
+        user,
+        dict
+    ):
 
-        user_id = user.get(
-            "id"
-        )
+        if user.get("id"):
 
-
-        if user_id:
-
-            return str(user_id)
+            return str(
+                user["id"]
+            )
 
 
     return None
 
 
 # ============================================================
-# DELAYED NUKE
+# USER DISPLAY NAME
+# ============================================================
+
+def get_user_name(data):
+
+    member = data.get(
+        "member"
+    )
+
+
+    if isinstance(
+        member,
+        dict
+    ):
+
+        user = member.get(
+            "user"
+        )
+
+
+        if isinstance(
+            user,
+            dict
+        ):
+
+            return (
+
+                user.get(
+                    "global_name"
+                )
+
+                or
+
+                user.get(
+                    "username"
+                )
+
+                or
+
+                "Player"
+
+            )
+
+
+    user = data.get(
+        "user"
+    )
+
+
+    if isinstance(
+        user,
+        dict
+    ):
+
+        return (
+
+            user.get(
+                "global_name"
+            )
+
+            or
+
+            user.get(
+                "username"
+            )
+
+            or
+
+            "Player"
+
+        )
+
+
+    return "Player"
+
+
+# ============================================================
+# NUKE
 # ============================================================
 
 def send_delayed_nuke(
+
     application_id,
+
     interaction_token,
+
     count
+
 ):
 
     webhook_url = (
 
-        f"https://discord.com/api/v10/webhooks/"
+        "https://discord.com/api/v10/webhooks/"
 
         f"{application_id}/"
         f"{interaction_token}"
@@ -321,7 +362,8 @@ def send_delayed_nuke(
                 webhook_url,
 
                 json={
-                    "content": NUKE_MESSAGE
+                    "content":
+                    NUKE_MESSAGE
                 },
 
                 timeout=15
@@ -337,17 +379,20 @@ def send_delayed_nuke(
 
 
 # ============================================================
-# CHESS WEBHOOK URL
+# ORIGINAL MESSAGE URL
 # ============================================================
 
-def get_original_message_url(
+def original_message_url(
+
     application_id,
+
     interaction_token
+
 ):
 
     return (
 
-        f"https://discord.com/api/v10/webhooks/"
+        "https://discord.com/api/v10/webhooks/"
 
         f"{application_id}/"
         f"{interaction_token}"
@@ -358,17 +403,320 @@ def get_original_message_url(
 
 
 # ============================================================
-# SEND / UPDATE CHESS BOARD
+# CHESS CONTENT
 # ============================================================
 
-def send_chess_board(
-    application_id,
-    interaction_token,
+def chess_content(
     game,
-    content
+    extra=None
 ):
 
-    webhook_url = get_original_message_url(
+    if extra:
+
+        return extra
+
+
+    if game.finished:
+
+        if game.result == "draw":
+
+            return (
+                "🤝 **Draw.**\n"
+                "Neither player gets bragging rights."
+            )
+
+
+        return (
+
+            f"🏆 **{game.winner_name} wins!**\n"
+            "Checkmate."
+
+        )
+
+
+    return (
+
+        f"♟️ **{game.current_player_name}'s turn.**\n"
+
+        "Select a piece, then select its destination."
+
+    )
+
+
+# ============================================================
+# CHESS COMPONENTS
+# ============================================================
+
+def build_chess_components(
+    game
+):
+
+    if game.finished:
+
+        return [
+
+            {
+
+                "type": 1,
+
+                "components": [
+
+                    {
+
+                        "type": 2,
+
+                        "style": 2,
+
+                        "label": "New Game",
+
+                        "custom_id":
+                        "chess_new"
+
+                    }
+
+                ]
+
+            }
+
+        ]
+
+
+    rows = []
+
+
+    # ========================================================
+    # PIECE SELECT
+    # ========================================================
+
+    source_options = []
+
+
+    if game.current_player_id:
+
+        for square in chess.SQUARES:
+
+            piece = game.board.piece_at(
+                square
+            )
+
+
+            if not piece:
+
+                continue
+
+
+            if piece.color != (
+                game.board.turn
+            ):
+
+                continue
+
+
+            legal = (
+                game.legal_destinations(
+                    square
+                )
+            )
+
+
+            if not legal:
+
+                continue
+
+
+            source_options.append({
+
+                "label":
+                square_name(square),
+
+                "value":
+                str(square),
+
+                "description": (
+
+                    f"{piece.symbol()} • "
+                    f"{len(legal)} legal move(s)"
+
+                )
+
+            })
+
+
+    if source_options:
+
+        rows.append({
+
+            "type": 1,
+
+            "components": [
+
+                {
+
+                    "type": 3,
+
+                    "custom_id":
+                    "chess_source",
+
+                    "placeholder":
+                    "Select a piece",
+
+                    "options":
+                    source_options[:25]
+
+                }
+
+            ]
+
+        })
+
+
+    # ========================================================
+    # DESTINATION SELECT
+    # ========================================================
+
+    if game.selected_square is not None:
+
+        destination_options = []
+
+
+        for square in (
+            game.legal_destinations(
+                game.selected_square
+            )
+        ):
+
+            destination_options.append({
+
+                "label":
+                square_name(square),
+
+                "value":
+                str(square),
+
+                "description":
+                "Move here"
+
+            })
+
+
+        # Discord select menus max 25 options.
+        # Split them into multiple rows.
+
+        for index in range(
+
+            0,
+
+            len(destination_options),
+
+            25
+
+        ):
+
+            if len(rows) >= 4:
+
+                break
+
+
+            rows.append({
+
+                "type": 1,
+
+                "components": [
+
+                    {
+
+                        "type": 3,
+
+                        "custom_id": (
+
+                            "chess_destination_"
+
+                            + str(
+                                index // 25
+                            )
+
+                        ),
+
+                        "placeholder":
+                        "Select destination",
+
+                        "options":
+                        destination_options[
+                            index:index + 25
+                        ]
+
+                    }
+
+                ]
+
+            })
+
+
+    # ========================================================
+    # CONTROLS
+    # ========================================================
+
+    if len(rows) < 5:
+
+        rows.append({
+
+            "type": 1,
+
+            "components": [
+
+                {
+
+                    "type": 2,
+
+                    "style": 4,
+
+                    "label":
+                    "Resign",
+
+                    "custom_id":
+                    "chess_resign"
+
+                },
+
+                {
+
+                    "type": 2,
+
+                    "style": 2,
+
+                    "label":
+                    "New Game",
+
+                    "custom_id":
+                    "chess_new"
+
+                }
+
+            ]
+
+        })
+
+
+    return rows
+
+
+# ============================================================
+# UPDATE CHESS MESSAGE
+# ============================================================
+
+def edit_chess_message(
+
+    application_id,
+
+    interaction_token,
+
+    game,
+
+    content
+
+):
+
+    webhook_url = original_message_url(
 
         application_id,
 
@@ -382,23 +730,45 @@ def send_chess_board(
     )
 
 
+    if game.mode == "bot":
+
+        players_text = (
+
+            f"**{game.player1_name}** "
+            f"vs "
+            f"**BurstSay**"
+
+        )
+
+    else:
+
+        players_text = (
+
+            f"**{game.player1_name}** "
+            f"♔ vs ♚ "
+            f"**{game.player2_name}**"
+
+        )
+
+
     payload = {
 
-        "content": content,
+        "content":
+        content,
 
         "embeds": [
 
             {
 
-                "title": "♟️ BurstSay Chess",
+                "title":
+                "♟️ BurstSay Chess",
 
                 "description": (
 
-                    f"**You:** "
-                    f"{game.player_color_name}\n"
+                    f"{players_text}\n\n"
 
-                    f"**BurstSay:** "
-                    f"{game.bot_color_name}\n\n"
+                    f"**Turn:** "
+                    f"{game.current_player_name}\n"
 
                     f"**Moves:** "
                     f"{len(game.move_history)}"
@@ -407,17 +777,15 @@ def send_chess_board(
 
                 "image": {
 
-                    "url": "attachment://chess.png"
+                    "url":
+                    "attachment://chess.png"
 
                 },
 
                 "footer": {
 
-                    "text": (
-                        "BurstSay Chess • "
-                        "Play responsibly, "
-                        "it's only chess."
-                    )
+                    "text":
+                    "BurstSay Chess"
 
                 }
 
@@ -425,7 +793,8 @@ def send_chess_board(
 
         ],
 
-        "components": build_chess_components(
+        "components":
+        build_chess_components(
             game
         ),
 
@@ -433,37 +802,15 @@ def send_chess_board(
 
             {
 
-                "id": "0",
+                "id":
+                "0",
 
-                "filename": "chess.png"
+                "filename":
+                "chess.png"
 
             }
 
         ]
-
-    }
-
-
-    files = {
-
-        "files[0]": (
-
-            "chess.png",
-
-            image,
-
-            "image/png"
-
-        )
-
-    }
-
-
-    form_data = {
-
-        "payload_json": json.dumps(
-            payload
-        )
 
     }
 
@@ -474,9 +821,28 @@ def send_chess_board(
 
             webhook_url,
 
-            data=form_data,
+            data={
 
-            files=files,
+                "payload_json":
+                json.dumps(
+                    payload
+                )
+
+            },
+
+            files={
+
+                "files[0]": (
+
+                    "chess.png",
+
+                    image,
+
+                    "image/png"
+
+                )
+
+            },
 
             timeout=30
 
@@ -486,346 +852,322 @@ def send_chess_board(
         if not response.ok:
 
             print(
-                "Chess board update failed:",
+
+                "Chess update failed:",
+
                 response.status_code,
+
                 response.text
-            )
 
-        else:
-
-            print(
-                "Chess board updated:",
-                response.status_code
             )
 
 
     except Exception as error:
 
         print(
-            "Chess board update exception:",
+
+            "Chess update exception:",
+
             repr(error)
+
         )
 
 
 # ============================================================
-# CHESS COMPONENTS
+# FIND GUILD MEMBER
 # ============================================================
 
-def build_chess_components(game):
+def find_guild_member(
 
-    components = []
+    guild_id,
 
+    username
 
-    # ========================================================
-    # GAME OVER
-    # ========================================================
+):
 
-    if game.finished:
-
-        components.append({
-
-            "type": 1,
-
-            "components": [
-
-                {
-
-                    "type": 2,
-
-                    "style": 2,
-
-                    "label": "New Game",
-
-                    "custom_id": "chess_new"
-
-                }
-
-            ]
-
-        })
-
-        return components
-
-
-    # ========================================================
-    # SOURCE PIECES
-    # ========================================================
-
-    source_options = []
-
-
-    if game.player_turn():
-
-        for square in chess.SQUARES:
-
-            piece = game.board.piece_at(
-                square
-            )
-
-
-            if not piece:
-                continue
-
-
-            if piece.color != game.player_color:
-                continue
-
-
-            legal = game.legal_destinations(
-                square
-            )
-
-
-            if not legal:
-                continue
-
-
-            source_options.append({
-
-                "label": square_name(
-                    square
-                ),
-
-                "value": str(
-                    square
-                ),
-
-                "description": (
-
-                    f"{piece.symbol()} • "
-
-                    f"{len(legal)} "
-                    f"legal move(s)"
-
-                )
-
-            })
-
-
-    # --------------------------------------------------------
-    # Source select
-    # --------------------------------------------------------
-
-    if source_options:
-
-        components.append({
-
-            "type": 1,
-
-            "components": [
-
-                {
-
-                    "type": 3,
-
-                    "custom_id": (
-                        "chess_source"
-                    ),
-
-                    "placeholder": (
-                        "Select a piece"
-                    ),
-
-                    "options": (
-                        source_options[:25]
-                    ),
-
-                    "disabled": (
-                        not game.player_turn()
-                    )
-
-                }
-
-            ]
-
-        })
-
-
-    # ========================================================
-    # DESTINATIONS
-    # ========================================================
-
-    if game.selected_square is not None:
-
-        destinations = (
-            game.legal_destinations(
-                game.selected_square
-            )
-        )
-
-
-        destination_options = []
-
-
-        for square in destinations:
-
-            destination_options.append({
-
-                "label": square_name(
-                    square
-                ),
-
-                "value": str(
-                    square
-                ),
-
-                "description": (
-                    "Move here"
-                )
-
-            })
-
-
-        # Discord select menus support a
-        # maximum of 25 options.
-        #
-        # A queen can have more than 25
-        # legal destinations in some positions.
-        #
-        # So split destinations across
-        # multiple select menus.
-
-        chunks = [
-
-            destination_options[i:i + 25]
-
-            for i in range(
-                0,
-                len(destination_options),
-                25
-            )
-
-        ]
-
-
-        for index, chunk in enumerate(
-            chunks[:2]
-        ):
-
-            components.append({
-
-                "type": 1,
-
-                "components": [
-
-                    {
-
-                        "type": 3,
-
-                        "custom_id": (
-                            f"chess_destination_{index}"
-                        ),
-
-                        "placeholder": (
-                            "Select destination"
-                            if index == 0
-                            else
-                            "More destinations"
-                        ),
-
-                        "options": chunk,
-
-                        "disabled": (
-                            not game.player_turn()
-                        )
-
-                    }
-
-                ]
-
-            })
-
-
-    # ========================================================
-    # BUTTONS
-    # ========================================================
-
-    components.append({
-
-        "type": 1,
-
-        "components": [
-
-            {
-
-                "type": 2,
-
-                "style": 4,
-
-                "label": "Resign",
-
-                "custom_id": (
-                    "chess_resign"
-                ),
-
-                "disabled": game.finished
-
-            },
-
-            {
-
-                "type": 2,
-
-                "style": 2,
-
-                "label": "New Game",
-
-                "custom_id": (
-                    "chess_new"
-                )
-
-            }
-
-        ]
-
-    })
-
-
-    return components
-
-
-# ============================================================
-# CHESS CONTENT
-# ============================================================
-
-def chess_content(game):
-
-    if game.finished:
-
-        if game.result == "win":
-
-            return random.choice(
-                CHESS_MESSAGES["win"]
-            )
-
-
-        if game.result == "loss":
-
-            return random.choice(
-                CHESS_MESSAGES["loss"]
-            )
-
-
-        return random.choice(
-            CHESS_MESSAGES["draw"]
-        )
-
-
-    if game.player_turn():
+    if not guild_id:
 
         return (
 
-            "♟️ **Your turn.**\n"
+            None,
 
-            "Select one of your pieces, "
-            "then select its destination."
+            "❌ **Player mode must be used inside a server.**\n"
+            "Discord's guild member search is required to find the opponent."
 
         )
 
 
-    return random.choice(
-        CHESS_MESSAGES["bot_move"]
+    username = username.strip()
+
+
+    # --------------------------------------------------------
+    # Mention support
+    # --------------------------------------------------------
+
+    if (
+
+        username.startswith("<@")
+
+        and
+
+        username.endswith(">")
+
+    ):
+
+        clean_id = (
+
+            username
+
+            .replace(
+                "<@",
+                ""
+            )
+
+            .replace(
+                "!",
+                ""
+            )
+
+            .replace(
+                ">",
+                ""
+            )
+
+        )
+
+
+        if clean_id.isdigit():
+
+            url = (
+
+                "https://discord.com/api/v10/guilds/"
+
+                f"{guild_id}/members/"
+                f"{clean_id}"
+
+            )
+
+
+            response = requests.get(
+
+                url,
+
+                headers={
+
+                    "Authorization":
+                    f"Bot {BOT_TOKEN}"
+
+                },
+
+                timeout=15
+
+            )
+
+
+            if response.ok:
+
+                return (
+
+                    response.json().get(
+                        "user"
+                    ),
+
+                    None
+
+                )
+
+
+    # --------------------------------------------------------
+    # Official Discord guild member search
+    # --------------------------------------------------------
+
+    url = (
+
+        "https://discord.com/api/v10/guilds/"
+
+        f"{guild_id}/members/search"
+
     )
+
+
+    try:
+
+        response = requests.get(
+
+            url,
+
+            params={
+
+                "query":
+                username,
+
+                "limit":
+                100
+
+            },
+
+            headers={
+
+                "Authorization":
+                f"Bot {BOT_TOKEN}"
+
+            },
+
+            timeout=15
+
+        )
+
+
+    except Exception as error:
+
+        return (
+
+            None,
+
+            f"❌ Member search failed: `{error}`"
+
+        )
+
+
+    if not response.ok:
+
+        return (
+
+            None,
+
+            (
+
+                "❌ Discord couldn't search the server members.\n"
+
+                f"HTTP `{response.status_code}`"
+
+            )
+
+        )
+
+
+    members = response.json()
+
+
+    matches = []
+
+
+    wanted = username.lower()
+
+
+    for member in members:
+
+        user = member.get(
+            "user",
+            {}
+        )
+
+
+        actual_username = (
+
+            user.get(
+                "username"
+            )
+            or
+            ""
+        ).lower()
+
+
+        global_name = (
+
+            user.get(
+                "global_name"
+            )
+            or
+            ""
+        ).lower()
+
+
+        nickname = (
+
+            member.get(
+                "nick"
+            )
+            or
+            ""
+        ).lower()
+
+
+        if (
+
+            actual_username
+            == wanted
+
+            or
+
+            global_name
+            == wanted
+
+            or
+
+            nickname
+            == wanted
+
+        ):
+
+            matches.append(
+                user
+            )
+
+
+    if len(matches) == 1:
+
+        return (
+            matches[0],
+            None
+        )
+
+
+    if len(matches) > 1:
+
+        return (
+
+            None,
+
+            "❌ Multiple members matched that name. "
+            "Use the exact username or @mention."
+
+        )
+
+
+    return (
+
+        None,
+
+        "❌ I couldn't find that player in this server.\n"
+        "Use their exact Discord username or @mention."
+
+    )
+
+
+# ============================================================
+# ERROR RESPONSE
+# ============================================================
+
+def error_response(
+    message
+):
+
+    return jsonify({
+
+        "type": 4,
+
+        "data": {
+
+            "content":
+            message,
+
+            "flags":
+            64
+
+        }
+
+    })
 
 
 # ============================================================
@@ -845,28 +1187,14 @@ def home():
 @app.post("/interactions")
 def interactions():
 
-    data = request.get_json()
-
-
-    if not data:
-
-        return jsonify({
-
-            "type": 4,
-
-            "data": {
-
-                "content": (
-                    "❌ Invalid interaction."
-                )
-
-            }
-
-        })
+    data = (
+        request.get_json()
+        or {}
+    )
 
 
     # ========================================================
-    # DISCORD PING
+    # PING
     # ========================================================
 
     if data.get("type") == 1:
@@ -913,17 +1241,16 @@ def interactions():
         )
 
 
+        user_name = get_user_name(
+            data
+        )
+
+
         # ====================================================
-        # /say
+        # SAY
         # ====================================================
 
         if name == "say":
-
-            message = options.get(
-                "message",
-                ""
-            )
-
 
             return jsonify({
 
@@ -931,7 +1258,11 @@ def interactions():
 
                 "data": {
 
-                    "content": message
+                    "content":
+                    options.get(
+                        "message",
+                        ""
+                    )
 
                 }
 
@@ -939,7 +1270,7 @@ def interactions():
 
 
         # ====================================================
-        # /burstsay
+        # BURSTSAY
         # ====================================================
 
         if name == "burstsay":
@@ -950,19 +1281,21 @@ def interactions():
             )
 
 
-            count = options.get(
-                "count",
-                1
-            )
-
-
             count = max(
 
                 1,
 
                 min(
-                    int(count),
+
+                    int(
+                        options.get(
+                            "count",
+                            1
+                        )
+                    ),
+
                     100
+
                 )
 
             )
@@ -974,10 +1307,9 @@ def interactions():
 
                 "data": {
 
-                    "content": "\n".join(
-
+                    "content":
+                    "\n".join(
                         [message] * count
-
                     )
 
                 }
@@ -986,7 +1318,7 @@ def interactions():
 
 
         # ====================================================
-        # /glaze
+        # GLAZE
         # ====================================================
 
         if name == "glaze":
@@ -1011,11 +1343,8 @@ def interactions():
 
                             "footer": {
 
-                                "text": (
-                                    "BurstSay • "
-                                    "Completely unbiased. "
-                                    "Probably."
-                                )
+                                "text":
+                                "BurstSay • Completely unbiased. Probably."
 
                             }
 
@@ -1029,147 +1358,7 @@ def interactions():
 
 
         # ====================================================
-        # /chess
-        # ====================================================
-
-        if name == "chess":
-
-            if not user_id:
-
-                return jsonify({
-
-                    "type": 4,
-
-                    "data": {
-
-                        "content": (
-                            "❌ Could not identify "
-                            "the player."
-                        ),
-
-                        "flags": 64
-
-                    }
-
-                })
-
-
-            color = options.get(
-                "color"
-            )
-
-
-            if color not in (
-                "white",
-                "black",
-                "random",
-                None
-            ):
-
-                color = "random"
-
-
-            if color in (
-                "random",
-                None
-            ):
-
-                color = random.choice(
-                    [
-                        "white",
-                        "black"
-                    ]
-                )
-
-
-            # ------------------------------------------------
-            # Remove previous game
-            # ------------------------------------------------
-
-            delete_game(
-                user_id
-            )
-
-
-            # ------------------------------------------------
-            # Create game
-            # ------------------------------------------------
-
-            game = create_game(
-
-                user_id,
-
-                color
-
-            )
-
-
-            # ------------------------------------------------
-            # If player is Black,
-            # BurstSay makes the first move.
-            # ------------------------------------------------
-
-            if (
-                game.player_color
-                == chess.BLACK
-            ):
-
-                game.make_bot_move()
-
-
-            application_id = data.get(
-                "application_id"
-            )
-
-
-            interaction_token = data.get(
-                "token"
-            )
-
-
-            # ------------------------------------------------
-            # Send board AFTER immediately
-            # acknowledging Discord.
-            #
-            # This is the important fix.
-            # ------------------------------------------------
-
-            threading.Thread(
-
-                target=send_chess_board,
-
-                args=(
-
-                    application_id,
-
-                    interaction_token,
-
-                    game,
-
-                    chess_content(
-                        game
-                    )
-
-                ),
-
-                daemon=True
-
-            ).start()
-
-
-            # ------------------------------------------------
-            # DEFERRED CHANNEL MESSAGE
-            # ------------------------------------------------
-
-            return jsonify({
-
-                "type": 5
-
-            })
-
-
-        # ====================================================
-        # /about
+        # ABOUT
         # ====================================================
 
         if name == "about":
@@ -1184,47 +1373,37 @@ def interactions():
 
                         {
 
-                            "title": "💥 BurstSay",
+                            "title":
+                            "💥 BurstSay",
 
                             "description": (
 
                                 "The ultimate Discord "
                                 "utility app built to make "
-                                "saying things a little "
-                                "more chaotic, a little "
-                                "more fun, and significantly "
-                                "more unnecessary.\n\n"
+                                "Discord a little more chaotic.\n\n"
 
                                 "👑 **Created by White**\n"
-                                "`likewhiteforever` on Discord\n\n"
-
-                                "━━━━━━━━━━━━━━━━━━━━\n\n"
+                                "`likewhiteforever`\n\n"
 
                                 "### 📜 Commands\n\n"
 
                                 "💬 **/say**\n"
-                                "Send a message through BurstSay.\n\n"
+                                "Send a message.\n\n"
 
                                 "💥 **/burstsay**\n"
-                                "Repeat a message multiple times.\n\n"
+                                "Repeat a message.\n\n"
 
                                 "✨ **/glaze**\n"
-                                "Generates an absolutely "
-                                "unbiased compliment about White.\n\n"
+                                "Glaze White.\n\n"
 
                                 "♟️ **/chess**\n"
-                                "Play chess against BurstSay.\n\n"
+                                "Play against BurstSay or another player.\n\n"
 
                                 "💣 **/nuke**\n"
-                                "Repeat the nuke message "
-                                "with a delay between messages.\n\n"
+                                "Send the nuke message.\n\n"
 
                                 "ℹ️ **/about**\n"
-                                "Displays information about BurstSay.\n\n"
-
-                                "━━━━━━━━━━━━━━━━━━━━\n\n"
-
-                                "🚧 **More commands are coming.**"
+                                "About BurstSay."
 
                             ),
 
@@ -1245,36 +1424,28 @@ def interactions():
 
 
         # ====================================================
-        # /nuke
+        # NUKE
         # ====================================================
 
         if name == "nuke":
-
-            count = options.get(
-                "count",
-                1
-            )
-
 
             count = max(
 
                 1,
 
                 min(
-                    int(count),
+
+                    int(
+                        options.get(
+                            "count",
+                            1
+                        )
+                    ),
+
                     20
+
                 )
 
-            )
-
-
-            application_id = data.get(
-                "application_id"
-            )
-
-
-            interaction_token = data.get(
-                "token"
             )
 
 
@@ -1284,9 +1455,13 @@ def interactions():
 
                 args=(
 
-                    application_id,
+                    data.get(
+                        "application_id"
+                    ),
 
-                    interaction_token,
+                    data.get(
+                        "token"
+                    ),
 
                     count
 
@@ -1304,8 +1479,92 @@ def interactions():
             })
 
 
+        # ====================================================
+        # CHESS
+        # ====================================================
+
+        if name == "chess":
+
+            return jsonify({
+
+                "type": 4,
+
+                "data": {
+
+                    "content": (
+
+                        "♟️ **BurstSay Chess**\n\n"
+
+                        "Choose how you want to play."
+
+                    ),
+
+                    "components": [
+
+                        {
+
+                            "type": 1,
+
+                            "components": [
+
+                                {
+
+                                    "type": 2,
+
+                                    "style": 1,
+
+                                    "label":
+                                    "Play vs Bot",
+
+                                    "emoji": {
+
+                                        "name":
+                                        "🤖"
+
+                                    },
+
+                                    "custom_id":
+                                    "chess_mode_bot"
+
+                                },
+
+                                {
+
+                                    "type": 2,
+
+                                    "style": 2,
+
+                                    "label":
+                                    "Play vs Player",
+
+                                    "emoji": {
+
+                                        "name":
+                                        "👤"
+
+                                    },
+
+                                    "custom_id":
+                                    "chess_mode_player"
+
+                                }
+
+                            ]
+
+                        }
+
+                    ],
+
+                    "flags":
+                    64
+
+                }
+
+            })
+
+
     # ========================================================
-    # COMPONENT INTERACTION
+    # COMPONENT
     # ========================================================
 
     if data.get("type") == 3:
@@ -1327,7 +1586,304 @@ def interactions():
         )
 
 
+        user_name = get_user_name(
+            data
+        )
+
+
         if not user_id:
+
+            return error_response(
+                "❌ Could not identify you."
+            )
+
+
+        # ====================================================
+        # BOT MODE
+        # ====================================================
+
+        if custom_id == "chess_mode_bot":
+
+            delete_game(
+                user_id
+            )
+
+
+            game = create_game(
+
+                player1_id=user_id,
+
+                mode="bot",
+
+                player1_name=user_name,
+
+                player2_name="BurstSay"
+
+            )
+
+
+            if game.player_color == chess.BLACK:
+
+                game.make_bot_move()
+
+
+            threading.Thread(
+
+                target=edit_chess_message,
+
+                args=(
+
+                    data.get(
+                        "application_id"
+                    ),
+
+                    data.get(
+                        "token"
+                    ),
+
+                    game,
+
+                    chess_content(
+                        game
+                    )
+
+                ),
+
+                daemon=True
+
+            ).start()
+
+
+            return jsonify({
+
+                "type": 5
+
+            })
+
+
+        # ====================================================
+        # PLAYER MODE
+        # ====================================================
+
+        if custom_id == "chess_mode_player":
+
+            return jsonify({
+
+                "type": 9,
+
+                "data": {
+
+                    "custom_id":
+                    "chess_player_modal",
+
+                    "title":
+                    "Play Against a Player",
+
+                    "components": [
+
+                        {
+
+                            "type": 1,
+
+                            "components": [
+
+                                {
+
+                                    "type": 4,
+
+                                    "custom_id":
+                                    "opponent_username",
+
+                                    "label":
+                                    "Opponent username",
+
+                                    "style": 1,
+
+                                    "placeholder":
+                                    "Example: username",
+
+                                    "required":
+                                    True,
+
+                                    "min_length":
+                                    2,
+
+                                    "max_length":
+                                    100
+
+                                }
+
+                            ]
+
+                        }
+
+                    ]
+
+                }
+
+            })
+
+
+        # ====================================================
+        # ACCEPT
+        # ====================================================
+
+        if custom_id == "chess_accept":
+
+            with PENDING_INVITES_LOCK:
+
+                invite = (
+                    PENDING_INVITES.get(
+                        str(user_id)
+                    )
+                )
+
+
+            if not invite:
+
+                return error_response(
+
+                    "❌ This chess invitation "
+                    "has expired or was already used."
+
+                )
+
+
+            if invite["expires"] < time.time():
+
+                with PENDING_INVITES_LOCK:
+
+                    PENDING_INVITES.pop(
+                        str(user_id),
+                        None
+                    )
+
+
+                return error_response(
+
+                    "❌ This chess invitation has expired."
+
+                )
+
+
+            challenger_id = (
+                invite["challenger_id"]
+            )
+
+
+            challenger_name = (
+                invite["challenger_name"]
+            )
+
+
+            opponent_name = (
+                user_name
+            )
+
+
+            # ------------------------------------------------
+            # Remove old games
+            # ------------------------------------------------
+
+            delete_game(
+                challenger_id
+            )
+
+
+            delete_game(
+                user_id
+            )
+
+
+            # ------------------------------------------------
+            # Create shared game
+            # ------------------------------------------------
+
+            game = create_game(
+
+                player1_id=
+                challenger_id,
+
+                player2_id=
+                user_id,
+
+                mode=
+                "player",
+
+                player1_name=
+                challenger_name,
+
+                player2_name=
+                opponent_name
+
+            )
+
+
+            with PENDING_INVITES_LOCK:
+
+                PENDING_INVITES.pop(
+
+                    str(user_id),
+
+                    None
+
+                )
+
+
+            # ------------------------------------------------
+            # Update original challenge message
+            # ------------------------------------------------
+
+            threading.Thread(
+
+                target=edit_chess_message,
+
+                args=(
+
+                    data.get(
+                        "application_id"
+                    ),
+
+                    data.get(
+                        "token"
+                    ),
+
+                    game,
+
+                    chess_content(
+                        game
+                    )
+
+                ),
+
+                daemon=True
+
+            ).start()
+
+
+            return jsonify({
+
+                "type": 5
+
+            })
+
+
+        # ====================================================
+        # DECLINE
+        # ====================================================
+
+        if custom_id == "chess_decline":
+
+            with PENDING_INVITES_LOCK:
+
+                PENDING_INVITES.pop(
+
+                    str(user_id),
+
+                    None
+
+                )
+
 
             return jsonify({
 
@@ -1336,70 +1892,66 @@ def interactions():
                 "data": {
 
                     "content":
-                    "❌ Could not identify the player.",
+                    "❌ Chess invitation declined.",
 
-                    "flags": 64
+                    "components":
+                    []
 
                 }
 
             })
 
+
+        # ====================================================
+        # GET GAME
+        # ====================================================
 
         game = get_game(
             user_id
         )
 
 
+        # ----------------------------------------------------
+        # THE SECURITY CHECK
+        # ----------------------------------------------------
+
         if not game:
 
-            return jsonify({
+            return error_response(
 
-                "type": 4,
+                "🔒 **This isn't your chess game.**\n"
+                "Only the two players can control it."
 
-                "data": {
-
-                    "content":
-                    "❌ You don't have an active chess game.",
-
-                    "flags": 64
-
-                }
-
-            })
+            )
 
 
-        application_id = data.get(
-            "application_id"
-        )
+        if not game.is_player(
+            user_id
+        ):
 
+            return error_response(
 
-        interaction_token = data.get(
-            "token"
-        )
+                "🔒 **This isn't your chess game.**\n"
+                "Only the two players can control it."
+
+            )
 
 
         # ====================================================
-        # SOURCE SELECT
+        # SOURCE
         # ====================================================
 
         if custom_id == "chess_source":
 
-            if not game.player_turn():
+            if not game.player_turn_for(
+                user_id
+            ):
 
-                return jsonify({
+                return error_response(
 
-                    "type": 4,
+                    "⏳ **It's the other player's turn.**"
 
-                    "data": {
-
-                        "content":
-                        "⏳ It's BurstSay's turn.",
-
-                        "flags": 64
-
-                    }
-
-                })
+                )
 
 
             values = (
@@ -1417,20 +1969,9 @@ def interactions():
 
             if not values:
 
-                return jsonify({
-
-                    "type": 4,
-
-                    "data": {
-
-                        "content":
-                        "Select a piece first.",
-
-                        "flags": 64
-
-                    }
-
-                })
+                return error_response(
+                    "❌ Select a piece."
+                )
 
 
             try:
@@ -1441,20 +1982,9 @@ def interactions():
 
             except ValueError:
 
-                return jsonify({
-
-                    "type": 4,
-
-                    "data": {
-
-                        "content":
-                        "❌ Invalid square.",
-
-                        "flags": 64
-
-                    }
-
-                })
+                return error_response(
+                    "❌ Invalid square."
+                )
 
 
             piece = game.board.piece_at(
@@ -1464,86 +1994,63 @@ def interactions():
 
             if not piece:
 
-                return jsonify({
+                return error_response(
 
-                    "type": 4,
+                    "❌ There isn't a piece there."
 
-                    "data": {
-
-                        "content":
-                        "There isn't a piece there.",
-
-                        "flags": 64
-
-                    }
-
-                })
+                )
 
 
-            if piece.color != game.player_color:
+            if piece.color != game.board.turn:
 
-                return jsonify({
+                return error_response(
 
-                    "type": 4,
+                    "❌ That's not your piece."
 
-                    "data": {
-
-                        "content":
-                        "That's not your piece.",
-
-                        "flags": 64
-
-                    }
-
-                })
+                )
 
 
-            legal = game.legal_destinations(
-                square
+            legal = (
+                game.legal_destinations(
+                    square
+                )
             )
 
 
             if not legal:
 
-                return jsonify({
+                return error_response(
 
-                    "type": 4,
+                    "❌ That piece has no legal moves."
 
-                    "data": {
-
-                        "content":
-                        "That piece has no legal moves.",
-
-                        "flags": 64
-
-                    }
-
-                })
+                )
 
 
             game.selected_square = square
 
 
-            # ------------------------------------------------
-            # Acknowledge the component immediately.
-            # ------------------------------------------------
-
             threading.Thread(
 
-                target=send_chess_board,
+                target=edit_chess_message,
 
                 args=(
 
-                    application_id,
+                    data.get(
+                        "application_id"
+                    ),
 
-                    interaction_token,
+                    data.get(
+                        "token"
+                    ),
 
                     game,
 
                     (
+
                         f"♟️ **{square_name(square)} "
                         "selected.**\n"
-                        "Now select your destination."
+                        "Choose a destination."
+
                     )
 
                 ),
@@ -1553,10 +2060,6 @@ def interactions():
             ).start()
 
 
-            # ------------------------------------------------
-            # DEFERRED UPDATE MESSAGE
-            # ------------------------------------------------
-
             return jsonify({
 
                 "type": 6
@@ -1565,29 +2068,31 @@ def interactions():
 
 
         # ====================================================
-        # DESTINATION SELECT
+        # DESTINATION
         # ====================================================
 
         if custom_id.startswith(
-            "chess_destination"
+            "chess_destination_"
         ):
 
-            if not game.player_turn():
+            if not game.player_turn_for(
+                user_id
+            ):
 
-                return jsonify({
+                return error_response(
 
-                    "type": 4,
+                    "⏳ **It's the other player's turn.**"
 
-                    "data": {
+                )
 
-                        "content":
-                        "⏳ It's BurstSay's turn.",
 
-                        "flags": 64
+            if game.selected_square is None:
 
-                    }
+                return error_response(
 
-                })
+                    "❌ Select a piece first."
+
+                )
 
 
             values = (
@@ -1605,38 +2110,9 @@ def interactions():
 
             if not values:
 
-                return jsonify({
-
-                    "type": 4,
-
-                    "data": {
-
-                        "content":
-                        "Select a destination.",
-
-                        "flags": 64
-
-                    }
-
-                })
-
-
-            if game.selected_square is None:
-
-                return jsonify({
-
-                    "type": 4,
-
-                    "data": {
-
-                        "content":
-                        "Select a piece first.",
-
-                        "flags": 64
-
-                    }
-
-                })
+                return error_response(
+                    "❌ Select a destination."
+                )
 
 
             try:
@@ -1647,20 +2123,9 @@ def interactions():
 
             except ValueError:
 
-                return jsonify({
-
-                    "type": 4,
-
-                    "data": {
-
-                        "content":
-                        "❌ Invalid destination.",
-
-                        "flags": 64
-
-                    }
-
-                })
+                return error_response(
+                    "❌ Invalid destination."
+                )
 
 
             from_square = (
@@ -1668,12 +2133,10 @@ def interactions():
             )
 
 
-            # ------------------------------------------------
-            # Player move
-            # ------------------------------------------------
-
             success, result = (
                 game.make_player_move(
+
+                    user_id,
 
                     from_square,
 
@@ -1690,13 +2153,17 @@ def interactions():
 
                 threading.Thread(
 
-                    target=send_chess_board,
+                    target=edit_chess_message,
 
                     args=(
 
-                        application_id,
+                        data.get(
+                            "application_id"
+                        ),
 
-                        interaction_token,
+                        data.get(
+                            "token"
+                        ),
 
                         game,
 
@@ -1717,77 +2184,88 @@ def interactions():
 
 
             # ------------------------------------------------
-            # Player checkmate / draw
+            # Bot mode
             # ------------------------------------------------
 
-            if game.finished:
+            if (
 
-                threading.Thread(
+                game.mode == "bot"
 
-                    target=send_chess_board,
+                and
 
-                    args=(
+                not game.finished
 
-                        application_id,
+            ):
 
-                        interaction_token,
-
-                        game,
-
-                        chess_content(
-                            game
-                        )
-
-                    ),
-
-                    daemon=True
-
-                ).start()
+                bot_move = (
+                    game.make_bot_move()
+                )
 
 
-                return jsonify({
+                if game.finished:
 
-                    "type": 6
+                    content = chess_content(
+                        game
+                    )
 
-                })
+                else:
+
+                    content = (
+
+                        f"♟️ **You played `{result}`**\n\n"
+
+                        f"🤖 **BurstSay played "
+                        f"`{bot_move}`**\n\n"
+
+                        f"{chess_content(game)}"
+
+                    )
 
 
             # ------------------------------------------------
-            # Bot move
+            # Player mode
             # ------------------------------------------------
 
-            bot_move = game.make_bot_move()
-
-
-            if game.finished:
+            else:
 
                 content = chess_content(
                     game
                 )
 
-            else:
 
-                content = (
+                if game.finished:
 
-                    f"♟️ **You played `{result}`**\n\n"
+                    content = (
+                        chess_content(
+                            game
+                        )
+                    )
 
-                    f"🤖 **BurstSay played "
-                    f"`{bot_move}`**\n\n"
+                else:
 
-                    f"{chess_content(game)}"
+                    content = (
 
-                )
+                        f"♟️ **{game.last_player_name} "
+                        f"played `{result}`.**\n\n"
+
+                        f"{chess_content(game)}"
+
+                    )
 
 
             threading.Thread(
 
-                target=send_chess_board,
+                target=edit_chess_message,
 
                 args=(
 
-                    application_id,
+                    data.get(
+                        "application_id"
+                    ),
 
-                    interaction_token,
+                    data.get(
+                        "token"
+                    ),
 
                     game,
 
@@ -1813,24 +2291,33 @@ def interactions():
 
         if custom_id == "chess_resign":
 
-            game.resign()
+            game.resign(
+                user_id
+            )
 
 
             threading.Thread(
 
-                target=send_chess_board,
+                target=edit_chess_message,
 
                 args=(
 
-                    application_id,
+                    data.get(
+                        "application_id"
+                    ),
 
-                    interaction_token,
+                    data.get(
+                        "token"
+                    ),
 
                     game,
 
                     (
-                        "🏳️ **You resigned.**\n\n"
-                        "BurstSay wins."
+
+                        f"🏳️ **{user_name} resigned.**\n\n"
+
+                        f"🏆 **{game.winner_name} wins!**"
+
                     )
 
                 ),
@@ -1854,63 +2341,283 @@ def interactions():
         if custom_id == "chess_new":
 
             delete_game(
-                user_id
+                game.player1_id
             )
 
 
-            color = random.choice(
-                [
-                    "white",
-                    "black"
-                ]
-            )
+            if game.player2_id:
 
-
-            game = create_game(
-
-                user_id,
-
-                color
-
-            )
-
-
-            if (
-                game.player_color
-                == chess.BLACK
-            ):
-
-                game.make_bot_move()
-
-
-            threading.Thread(
-
-                target=send_chess_board,
-
-                args=(
-
-                    application_id,
-
-                    interaction_token,
-
-                    game,
-
-                    chess_content(
-                        game
-                    )
-
-                ),
-
-                daemon=True
-
-            ).start()
+                delete_game(
+                    game.player2_id
+                )
 
 
             return jsonify({
 
-                "type": 6
+                "type": 4,
+
+                "data": {
+
+                    "content": (
+
+                        "♟️ The previous game has ended.\n"
+                        "Use `/chess` to start another game."
+
+                    ),
+
+                    "components":
+                    []
+
+                }
 
             })
+
+
+    # ========================================================
+    # MODAL SUBMIT
+    # ========================================================
+
+    if data.get("type") == 5:
+
+        custom_id = (
+
+            data.get(
+                "data",
+                {}
+            ).get(
+                "custom_id"
+            )
+
+        )
+
+
+        if custom_id == "chess_player_modal":
+
+            challenger_id = get_user_id(
+                data
+            )
+
+
+            challenger_name = get_user_name(
+                data
+            )
+
+
+            guild_id = data.get(
+                "guild_id"
+            )
+
+
+            modal_components = (
+
+                data.get(
+                    "data",
+                    {}
+                ).get(
+                    "components",
+                    []
+                )
+
+            )
+
+
+            opponent_username = ""
+
+
+            try:
+
+                opponent_username = (
+
+                    modal_components[0]
+
+                    ["components"][0]
+
+                    ["value"]
+
+                    .strip()
+
+                )
+
+            except Exception:
+
+                pass
+
+
+            if not opponent_username:
+
+                return error_response(
+
+                    "❌ Enter an opponent username."
+
+                )
+
+
+            opponent, error = (
+                find_guild_member(
+
+                    guild_id,
+
+                    opponent_username
+
+                )
+            )
+
+
+            if error:
+
+                return error_response(
+                    error
+                )
+
+
+            opponent_id = str(
+                opponent["id"]
+            )
+
+
+            if opponent_id == str(
+                challenger_id
+            ):
+
+                return error_response(
+
+                    "❌ You can't challenge yourself."
+
+                )
+
+
+            if opponent.get(
+                "bot"
+            ):
+
+                return error_response(
+
+                    "❌ You can't challenge a bot."
+
+                )
+
+
+            # ------------------------------------------------
+            # Check whether either player is already in
+            # a game.
+            # ------------------------------------------------
+
+            if get_game(
+                challenger_id
+            ):
+
+                return error_response(
+
+                    "❌ You are already in a chess game."
+
+                )
+
+
+            if get_game(
+                opponent_id
+            ):
+
+                return error_response(
+
+                    "❌ That player is already in a chess game."
+
+                )
+
+
+            # ------------------------------------------------
+            # Save invitation
+            # ------------------------------------------------
+
+            with PENDING_INVITES_LOCK:
+
+                PENDING_INVITES[
+                    opponent_id
+                ] = {
+
+                    "challenger_id":
+                    str(challenger_id),
+
+                    "challenger_name":
+                    challenger_name,
+
+                    "guild_id":
+                    guild_id,
+
+                    "expires":
+                    time.time() + 300
+
+                }
+
+
+            # ------------------------------------------------
+            # Challenge message
+            # ------------------------------------------------
+
+            return jsonify({
+
+                "type": 4,
+
+                "data": {
+
+                    "content": (
+
+                        f"♟️ **Chess Challenge!**\n\n"
+
+                        f"**{challenger_name}** "
+                        f"has challenged "
+                        f"<@{opponent_id}> "
+                        f"to a chess game.\n\n"
+
+                        f"<@{opponent_id}> "
+                        f"has **5 minutes** to accept."
+
+                    ),
+
+                    "components": [
+
+                        {
+
+                            "type": 1,
+
+                            "components": [
+
+                                {
+
+                                    "type": 2,
+
+                                    "style": 3,
+
+                                    "label":
+                                    "Accept",
+
+                                    "custom_id":
+                                    "chess_accept"
+
+                                },
+
+                                {
+
+                                    "type": 2,
+
+                                    "style": 4,
+
+                                    "label":
+                                    "Decline",
+
+                                    "custom_id":
+                                    "chess_decline"
+
+                                }
+
+                            ]
+
+                        }
+
+                    ]
+
+                }
+
+            )
 
 
     # ========================================================
@@ -1932,7 +2639,7 @@ def interactions():
 
 
 # ============================================================
-# START SERVER
+# SERVER
 # ============================================================
 
 if __name__ == "__main__":
