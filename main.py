@@ -18,7 +18,10 @@ if not PUBLIC_KEY:
 verify_key = VerifyKey(bytes.fromhex(PUBLIC_KEY))
 
 
-# Load Nuke message from JSON
+# =========================
+# Load Nuke Message
+# =========================
+
 try:
     with open("nuke.json", "r", encoding="utf-8") as file:
         NUKE_DATA = json.load(file)
@@ -32,6 +35,10 @@ NUKE_MESSAGE = NUKE_DATA.get(
     "# Nuked by Whiteify Bot 💥"
 )
 
+
+# =========================
+# Glaze Messages
+# =========================
 
 GLAZE_MESSAGES = [
     "👑 **White** isn't just a developer. White is what happens when coding skill decides to become a person.",
@@ -47,6 +54,10 @@ GLAZE_MESSAGES = [
 ]
 
 
+# =========================
+# Discord Request Verification
+# =========================
+
 @app.before_request
 def verify_discord_request():
     if request.path != "/interactions":
@@ -56,7 +67,9 @@ def verify_discord_request():
     timestamp = request.headers.get("X-Signature-Timestamp")
 
     if not signature or not timestamp:
-        return jsonify({"error": "Missing signature"}), 401
+        return jsonify({
+            "error": "Missing signature"
+        }), 401
 
     body = request.get_data()
 
@@ -66,26 +79,43 @@ def verify_discord_request():
             bytes.fromhex(signature)
         )
     except Exception:
-        return jsonify({"error": "Invalid request signature"}), 401
+        return jsonify({
+            "error": "Invalid request signature"
+        }), 401
 
+
+# =========================
+# Home
+# =========================
 
 @app.get("/")
 def home():
     return "BurstSay is online"
 
 
+# =========================
+# Discord Interactions
+# =========================
+
 @app.post("/interactions")
 def interactions():
     data = request.get_json()
 
-    # Discord Ping verification
+    # -------------------------
+    # Discord Ping
+    # -------------------------
+
     if data.get("type") == 1:
         return jsonify({
             "type": 1
         })
 
-    # Slash command
+    # -------------------------
+    # Slash Commands
+    # -------------------------
+
     if data.get("type") == 2:
+
         command = data.get("data", {})
         name = command.get("name")
 
@@ -94,8 +124,12 @@ def interactions():
             for option in command.get("options", [])
         }
 
+        # =====================
         # /say
+        # =====================
+
         if name == "say":
+
             message = options.get("message", "")
 
             return jsonify({
@@ -105,24 +139,39 @@ def interactions():
                 }
             })
 
+        # =====================
         # /burstsay
+        # =====================
+
         if name == "burstsay":
+
             message = options.get("message", "")
             count = options.get("count", 1)
 
-            # Safety cap
-            count = max(1, min(int(count), 100))
+            # Maximum 100 repetitions
+            count = max(
+                1,
+                min(int(count), 100)
+            )
 
             return jsonify({
                 "type": 4,
                 "data": {
-                    "content": "\n".join([message] * count)
+                    "content": "\n".join(
+                        [message] * count
+                    )
                 }
             })
 
+        # =====================
         # /glaze
+        # =====================
+
         if name == "glaze":
-            message = random.choice(GLAZE_MESSAGES)
+
+            message = random.choice(
+                GLAZE_MESSAGES
+            )
 
             return jsonify({
                 "type": 4,
@@ -139,8 +188,12 @@ def interactions():
                 }
             })
 
+        # =====================
         # /about
+        # =====================
+
         if name == "about":
+
             return jsonify({
                 "type": 4,
                 "data": {
@@ -179,7 +232,8 @@ def interactions():
                                 "Obviously.\n\n"
 
                                 "💣 **/nuke**\n"
-                                "Deploy the ultimate Whiteify Bot nuke.\n\n"
+                                "Repeat the Whiteify Bot nuke message inside "
+                                "a single response.\n\n"
 
                                 "ℹ️ **/about**\n"
                                 "Displays information about BurstSay, its "
@@ -202,16 +256,35 @@ def interactions():
                 }
             })
 
+        # =====================
         # /nuke
+        # =====================
+
         if name == "nuke":
+
+            count = options.get("count", 1)
+
+            # Maximum 10 repetitions
+            count = max(
+                1,
+                min(int(count), 100)
+            )
+
+            content = "\n".join(
+                [NUKE_MESSAGE] * count
+            )
+
             return jsonify({
                 "type": 4,
                 "data": {
-                    "content": NUKE_MESSAGE
+                    "content": content
                 }
             })
 
-    # Unknown command
+    # =========================
+    # Unknown Command
+    # =========================
+
     return jsonify({
         "type": 4,
         "data": {
@@ -220,8 +293,15 @@ def interactions():
     })
 
 
+# =========================
+# Start Server
+# =========================
+
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", "10000"))
+
+    port = int(
+        os.getenv("PORT", "10000")
+    )
 
     app.run(
         host="0.0.0.0",
