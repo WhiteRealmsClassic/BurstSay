@@ -30,34 +30,16 @@ from chess_game import (
 
 load_dotenv()
 
-
-PUBLIC_KEY = os.getenv(
-    "DISCORD_PUBLIC_KEY"
-)
-
-BOT_TOKEN = os.getenv(
-    "DISCORD_TOKEN"
-)
-
+PUBLIC_KEY = os.getenv("DISCORD_PUBLIC_KEY")
+BOT_TOKEN = os.getenv("DISCORD_TOKEN")
 
 if not PUBLIC_KEY:
-    raise RuntimeError(
-        "DISCORD_PUBLIC_KEY is missing from .env"
-    )
-
+    raise RuntimeError("DISCORD_PUBLIC_KEY is missing from .env")
 
 if not BOT_TOKEN:
-    raise RuntimeError(
-        "DISCORD_TOKEN is missing from .env"
-    )
+    raise RuntimeError("DISCORD_TOKEN is missing from .env")
 
-
-verify_key = VerifyKey(
-    bytes.fromhex(
-        PUBLIC_KEY
-    )
-)
-
+verify_key = VerifyKey(bytes.fromhex(PUBLIC_KEY))
 
 app = Flask(__name__)
 
@@ -67,424 +49,21 @@ app = Flask(__name__)
 # ============================================================
 
 PENDING_INVITES = {}
-
 PENDING_INVITES_LOCK = threading.Lock()
 
 
 # ============================================================
-# AKINATOR
+# AKINATOR GAMES
 # ============================================================
 
+# user_id -> {
+#     "aki": Akinator instance,
+#     "theme": "c" / "a" / "o",
+#     "lock": threading.Lock()
+# }
+
 AKINATOR_GAMES = {}
-
-AKINATOR_LOCK = threading.Lock()
-
-AKINATOR_THEMES = {
-    "character": "c",
-    "animal": "a",
-    "object": "o",
-}
-
-AKINATOR_THEME_NAMES = {
-    "c": "Character",
-    "a": "Animal",
-    "o": "Object",
-}
-
-
-def get_akinator_game(user_id):
-
-    with AKINATOR_LOCK:
-
-        return AKINATOR_GAMES.get(
-            str(user_id)
-        )
-
-
-def set_akinator_game(
-    user_id,
-    game
-):
-
-    with AKINATOR_LOCK:
-
-        AKINATOR_GAMES[
-            str(user_id)
-        ] = game
-
-
-def delete_akinator_game(
-    user_id
-):
-
-    with AKINATOR_LOCK:
-
-        AKINATOR_GAMES.pop(
-            str(user_id),
-            None
-        )
-
-
-def akinator_buttons(
-    user_id
-):
-
-    uid = str(user_id)
-
-    return [
-
-        {
-            "type": 1,
-
-            "components": [
-
-                {
-                    "type": 2,
-
-                    "style": 3,
-
-                    "label":
-                    "Yes",
-
-                    "emoji": {
-                        "name":
-                        "✅"
-                    },
-
-                    "custom_id":
-                    f"aki_answer:yes:{uid}"
-                },
-
-                {
-                    "type": 2,
-
-                    "style": 4,
-
-                    "label":
-                    "No",
-
-                    "emoji": {
-                        "name":
-                        "❌"
-                    },
-
-                    "custom_id":
-                    f"aki_answer:no:{uid}"
-                },
-
-                {
-                    "type": 2,
-
-                    "style": 2,
-
-                    "label":
-                    "Don't know",
-
-                    "emoji": {
-                        "name":
-                        "❓"
-                    },
-
-                    "custom_id":
-                    f"aki_answer:idk:{uid}"
-                }
-
-            ]
-        },
-
-        {
-            "type": 1,
-
-            "components": [
-
-                {
-                    "type": 2,
-
-                    "style": 1,
-
-                    "label":
-                    "Probably",
-
-                    "emoji": {
-                        "name":
-                        "🤔"
-                    },
-
-                    "custom_id":
-                    f"aki_answer:probably:{uid}"
-                },
-
-                {
-                    "type": 2,
-
-                    "style": 2,
-
-                    "label":
-                    "Probably not",
-
-                    "emoji": {
-                        "name":
-                        "🙅"
-                    },
-
-                    "custom_id":
-                    f"aki_answer:probably_not:{uid}"
-                }
-
-            ]
-        }
-
-    ]
-
-
-def akinator_question_data(
-    game,
-    user_id,
-    theme_name,
-    intro=False
-):
-
-    try:
-
-        progression = float(
-            getattr(
-                game,
-                "progression",
-                0
-            )
-        )
-
-    except Exception:
-
-        progression = 0
-
-
-    try:
-
-        step = int(
-            getattr(
-                game,
-                "step",
-                0
-            )
-        ) + 1
-
-    except Exception:
-
-        step = 1
-
-
-    if intro:
-
-        content = (
-
-            f"🧞 **BurstSay Akinator — "
-            f"{theme_name}**\n\n"
-
-            "Think of something and keep it secret.\n"
-            "I'll try to figure it out.\n\n"
-
-        )
-
-    else:
-
-        content = (
-
-            f"🧞 **BurstSay Akinator — "
-            f"{theme_name}**\n\n"
-
-        )
-
-
-    content += (
-
-        f"**Question {step}**\n"
-
-        f"> {game.question}\n\n"
-
-        f"🧠 **Progress:** "
-        f"{progression:.0f}%"
-
-    )
-
-
-    return {
-
-        "content":
-        content,
-
-        "components":
-        akinator_buttons(
-            user_id
-        )
-
-    }
-
-
-def akinator_guess_data(
-    game,
-    user_id
-):
-
-    name = (
-
-        getattr(
-            game,
-            "name_proposition",
-            None
-        )
-
-        or
-
-        "something"
-
-    )
-
-
-    description = (
-
-        getattr(
-            game,
-            "description_proposition",
-            None
-        )
-
-        or
-
-        "I don't have a description for this guess."
-
-    )
-
-
-    photo = (
-
-        getattr(
-            game,
-            "photo",
-            None
-        )
-
-        or
-
-        None
-
-    )
-
-
-    embed = {
-
-        "title":
-        "🔮 I think I know it...",
-
-        "description": (
-
-            f"### {name}\n\n"
-
-            f"{description}"
-
-        ),
-
-        "footer": {
-
-            "text":
-            "Was I right?"
-
-        }
-
-    }
-
-
-    if photo:
-
-        embed["thumbnail"] = {
-
-            "url":
-            photo
-
-        }
-
-
-    return {
-
-        "content":
-        "🧞 **My guess is...**",
-
-        "embeds": [
-            embed
-        ],
-
-        "components": [
-
-            {
-
-                "type": 1,
-
-                "components": [
-
-                    {
-
-                        "type": 2,
-
-                        "style": 3,
-
-                        "label":
-                        "Yes, you got it!",
-
-                        "emoji": {
-                            "name":
-                            "✅"
-                        },
-
-                        "custom_id":
-                        f"aki_guess:yes:{user_id}"
-
-                    },
-
-                    {
-
-                        "type": 2,
-
-                        "style": 4,
-
-                        "label":
-                        "No",
-
-                        "emoji": {
-                            "name":
-                            "❌"
-                        },
-
-                        "custom_id":
-                        f"aki_guess:no:{user_id}"
-
-                    }
-
-                ]
-
-            }
-
-        ]
-
-    }
-
-
-def start_akinator(
-    user_id,
-    theme
-):
-
-    game = akinator.Akinator()
-
-    game.start_game(
-        theme=theme
-    )
-
-    set_akinator_game(
-        user_id,
-        game
-    )
-
-    return game
+AKINATOR_GAMES_LOCK = threading.Lock()
 
 
 # ============================================================
@@ -492,36 +71,23 @@ def start_akinator(
 # ============================================================
 
 try:
-
     with open(
         "nuke.json",
         "r",
         encoding="utf-8"
     ) as file:
-
-        NUKE_DATA = json.load(
-            file
-        )
+        NUKE_DATA = json.load(file)
 
 except FileNotFoundError:
-
-    raise RuntimeError(
-        "nuke.json is missing"
-    )
+    raise RuntimeError("nuke.json is missing")
 
 except json.JSONDecodeError:
-
-    raise RuntimeError(
-        "nuke.json contains invalid JSON"
-    )
+    raise RuntimeError("nuke.json contains invalid JSON")
 
 
 NUKE_MESSAGE = NUKE_DATA.get(
-
     "message",
-
     "# Nuked by Whiteify Bot 💥"
-
 )
 
 
@@ -562,53 +128,32 @@ GLAZE_MESSAGES = [
 def verify_discord_request():
 
     if request.path != "/interactions":
-
         return
-
 
     signature = request.headers.get(
         "X-Signature-Ed25519"
     )
 
-
     timestamp = request.headers.get(
         "X-Signature-Timestamp"
     )
 
-
     if not signature or not timestamp:
-
         return jsonify({
-
-            "error":
-            "Missing signature"
-
+            "error": "Missing signature"
         }), 401
-
 
     body = request.get_data()
 
-
     try:
-
         verify_key.verify(
-
-            timestamp.encode()
-            + body,
-
-            bytes.fromhex(
-                signature
-            )
-
+            timestamp.encode() + body,
+            bytes.fromhex(signature)
         )
 
     except Exception:
-
         return jsonify({
-
-            "error":
-            "Invalid request signature"
-
+            "error": "Invalid request signature"
         }), 401
 
 
@@ -618,49 +163,23 @@ def verify_discord_request():
 
 def get_user_id(data):
 
-    member = data.get(
-        "member"
-    )
+    member = data.get("member")
 
+    if isinstance(member, dict):
 
-    if isinstance(
-        member,
-        dict
-    ):
+        user = member.get("user")
 
-        user = member.get(
-            "user"
-        )
-
-
-        if isinstance(
-            user,
-            dict
-        ):
+        if isinstance(user, dict):
 
             if user.get("id"):
+                return str(user["id"])
 
-                return str(
-                    user["id"]
-                )
+    user = data.get("user")
 
-
-    user = data.get(
-        "user"
-    )
-
-
-    if isinstance(
-        user,
-        dict
-    ):
+    if isinstance(user, dict):
 
         if user.get("id"):
-
-            return str(
-                user["id"]
-            )
-
+            return str(user["id"])
 
     return None
 
@@ -671,73 +190,33 @@ def get_user_id(data):
 
 def get_user_name(data):
 
-    member = data.get(
-        "member"
-    )
+    member = data.get("member")
 
+    if isinstance(member, dict):
 
-    if isinstance(
-        member,
-        dict
-    ):
+        user = member.get("user")
 
-        user = member.get(
-            "user"
-        )
-
-
-        if isinstance(
-            user,
-            dict
-        ):
+        if isinstance(user, dict):
 
             return (
-
-                user.get(
-                    "global_name"
-                )
-
+                user.get("global_name")
                 or
-
-                user.get(
-                    "username"
-                )
-
+                user.get("username")
                 or
-
                 "Player"
-
             )
 
+    user = data.get("user")
 
-    user = data.get(
-        "user"
-    )
-
-
-    if isinstance(
-        user,
-        dict
-    ):
+    if isinstance(user, dict):
 
         return (
-
-            user.get(
-                "global_name"
-            )
-
+            user.get("global_name")
             or
-
-            user.get(
-                "username"
-            )
-
+            user.get("username")
             or
-
             "Player"
-
         )
-
 
     return "Player"
 
@@ -747,46 +226,31 @@ def get_user_name(data):
 # ============================================================
 
 def send_delayed_nuke(
-
     application_id,
-
     interaction_token,
-
     count
-
 ):
 
     webhook_url = (
-
         "https://discord.com/api/v10/webhooks/"
-
         f"{application_id}/"
         f"{interaction_token}"
-
     )
-
 
     for _ in range(count):
 
         try:
 
             requests.post(
-
                 webhook_url,
-
                 json={
-                    "content":
-                    NUKE_MESSAGE
+                    "content": NUKE_MESSAGE
                 },
-
                 timeout=15
-
             )
 
         except Exception:
-
             pass
-
 
         time.sleep(2)
 
@@ -796,23 +260,591 @@ def send_delayed_nuke(
 # ============================================================
 
 def original_message_url(
-
     application_id,
-
     interaction_token
-
 ):
 
     return (
-
         "https://discord.com/api/v10/webhooks/"
-
         f"{application_id}/"
         f"{interaction_token}"
-
         "/messages/@original"
-
     )
+
+
+# ============================================================
+# ============================================================
+# AKINATOR
+# ============================================================
+# ============================================================
+
+def create_akinator_instance(theme):
+
+    """
+    Create an Akinator instance.
+
+    The current package documents the themes as:
+        c = characters
+        a = animals
+        o = objects
+    """
+
+    try:
+
+        aki = akinator.Akinator(
+            theme=theme
+        )
+
+        return aki
+
+    except TypeError:
+
+        # Compatibility fallback for builds where the
+        # constructor does not accept theme directly.
+
+        aki = akinator.Akinator()
+
+        if hasattr(aki, "theme"):
+
+            aki.theme = theme
+
+            return aki
+
+        raise
+
+
+def get_akinator_game(user_id):
+
+    with AKINATOR_GAMES_LOCK:
+
+        return AKINATOR_GAMES.get(
+            str(user_id)
+        )
+
+
+def delete_akinator_game(user_id):
+
+    with AKINATOR_GAMES_LOCK:
+
+        AKINATOR_GAMES.pop(
+            str(user_id),
+            None
+        )
+
+
+def save_akinator_game(
+    user_id,
+    aki,
+    theme
+):
+
+    game = {
+        "aki": aki,
+        "theme": theme,
+        "lock": threading.Lock()
+    }
+
+    with AKINATOR_GAMES_LOCK:
+
+        AKINATOR_GAMES[
+            str(user_id)
+        ] = game
+
+    return game
+
+
+# ============================================================
+# AKINATOR COMPONENTS
+# ============================================================
+
+def build_akinator_components():
+
+    return [
+
+        {
+            "type": 1,
+            "components": [
+
+                {
+                    "type": 2,
+                    "style": 3,
+                    "label": "Yes",
+                    "emoji": {
+                        "name": "✅"
+                    },
+                    "custom_id":
+                    "akinator_yes"
+                },
+
+                {
+                    "type": 2,
+                    "style": 4,
+                    "label": "No",
+                    "emoji": {
+                        "name": "❌"
+                    },
+                    "custom_id":
+                    "akinator_no"
+                }
+
+            ]
+        },
+
+        {
+            "type": 1,
+            "components": [
+
+                {
+                    "type": 2,
+                    "style": 2,
+                    "label": "Probably",
+                    "emoji": {
+                        "name": "🤔"
+                    },
+                    "custom_id":
+                    "akinator_probably"
+                },
+
+                {
+                    "type": 2,
+                    "style": 2,
+                    "label": "Probably Not",
+                    "emoji": {
+                        "name": "🙅"
+                    },
+                    "custom_id":
+                    "akinator_probably_not"
+                },
+
+                {
+                    "type": 2,
+                    "style": 2,
+                    "label": "IDK",
+                    "emoji": {
+                        "name": "❓"
+                    },
+                    "custom_id":
+                    "akinator_idk"
+                }
+
+            ]
+        },
+
+        {
+            "type": 1,
+            "components": [
+
+                {
+                    "type": 2,
+                    "style": 4,
+                    "label": "End Game",
+                    "emoji": {
+                        "name": "🛑"
+                    },
+                    "custom_id":
+                    "akinator_end"
+                }
+
+            ]
+        }
+
+    ]
+
+
+# ============================================================
+# AKINATOR QUESTION PAYLOAD
+# ============================================================
+
+def build_akinator_question_payload(
+    aki,
+    theme
+):
+
+    theme_names = {
+        "c": "Character",
+        "a": "Animal",
+        "o": "Object"
+    }
+
+    theme_name = theme_names.get(
+        theme,
+        "Character"
+    )
+
+    question = str(aki)
+
+    progression = getattr(
+        aki,
+        "progression",
+        0
+    )
+
+    step = getattr(
+        aki,
+        "step",
+        0
+    )
+
+    return {
+
+        "content":
+        "🧞 **Akinator**\n\n"
+        f"**Question {step + 1}**\n"
+        f"{question}\n\n"
+        f"📊 Progress: **{float(progression):.1f}%**",
+
+        "embeds": [
+
+            {
+
+                "title":
+                f"🧞 Akinator • {theme_name}",
+
+                "description":
+                "Think about something and answer honestly.\n"
+                "Akinator will try to figure it out.",
+
+                "footer": {
+                    "text":
+                    "BurstSay • Powered by Akinator"
+                }
+
+            }
+
+        ],
+
+        "components":
+        build_akinator_components()
+
+    }
+
+
+# ============================================================
+# AKINATOR RESULT PAYLOAD
+# ============================================================
+
+def build_akinator_result_payload(
+    aki,
+    theme
+):
+
+    name = getattr(
+        aki,
+        "name_proposition",
+        None
+    )
+
+    description = getattr(
+        aki,
+        "description_proposition",
+        None
+    )
+
+    photo = getattr(
+        aki,
+        "photo",
+        None
+    )
+
+    if not name:
+        name = "something mysterious"
+
+    if not description:
+        description = "Akinator has made its guess."
+
+    embed = {
+
+        "title":
+        "🧞 Akinator's Guess",
+
+        "description": (
+            f"**I think you're thinking of:**\n\n"
+            f"# {name}\n\n"
+            f"{description}"
+        ),
+
+        "footer": {
+            "text":
+            "Was I right? Humanity may never know."
+        }
+
+    }
+
+    if photo:
+
+        embed["thumbnail"] = {
+            "url": photo
+        }
+
+    return {
+
+        "content":
+        "🎯 **I've made my guess!**",
+
+        "embeds": [
+            embed
+        ],
+
+        "components": [
+
+            {
+                "type": 1,
+                "components": [
+
+                    {
+                        "type": 2,
+                        "style": 3,
+                        "label": "Play Again",
+                        "emoji": {
+                            "name": "🔄"
+                        },
+                        "custom_id":
+                        "akinator_restart"
+                    },
+
+                    {
+                        "type": 2,
+                        "style": 4,
+                        "label": "End",
+                        "emoji": {
+                            "name": "🛑"
+                        },
+                        "custom_id":
+                        "akinator_end"
+                    }
+
+                ]
+            }
+
+        ]
+
+    }
+
+
+# ============================================================
+# UPDATE AKINATOR MESSAGE
+# ============================================================
+
+def update_akinator_message(
+    application_id,
+    interaction_token,
+    payload
+):
+
+    webhook_url = original_message_url(
+        application_id,
+        interaction_token
+    )
+
+    try:
+
+        response = requests.patch(
+            webhook_url,
+            json=payload,
+            timeout=30
+        )
+
+        if not response.ok:
+
+            print(
+                "Akinator update failed:",
+                response.status_code,
+                response.text
+            )
+
+    except Exception as error:
+
+        print(
+            "Akinator update exception:",
+            repr(error)
+        )
+
+
+# ============================================================
+# START AKINATOR IN BACKGROUND
+# ============================================================
+
+def start_akinator_game(
+    application_id,
+    interaction_token,
+    user_id,
+    theme
+):
+
+    try:
+
+        # Remove an old game first.
+
+        delete_akinator_game(
+            user_id
+        )
+
+        aki = create_akinator_instance(
+            theme
+        )
+
+        # start_game() performs network communication,
+        # so this MUST happen in a background thread.
+
+        aki.start_game()
+
+        save_akinator_game(
+            user_id,
+            aki,
+            theme
+        )
+
+        payload = build_akinator_question_payload(
+            aki,
+            theme
+        )
+
+        update_akinator_message(
+            application_id,
+            interaction_token,
+            payload
+        )
+
+    except Exception as error:
+
+        print(
+            "Akinator start exception:",
+            repr(error)
+        )
+
+        delete_akinator_game(
+            user_id
+        )
+
+        update_akinator_message(
+
+            application_id,
+
+            interaction_token,
+
+            {
+                "content": (
+                    "❌ **Akinator couldn't connect.**\n\n"
+                    "The Akinator service may be temporarily "
+                    "unavailable. Try again in a moment."
+                ),
+                "embeds": [],
+                "components": []
+            }
+
+        )
+
+
+# ============================================================
+# PROCESS AKINATOR ANSWER
+# ============================================================
+
+def process_akinator_answer(
+    application_id,
+    interaction_token,
+    user_id,
+    answer
+):
+
+    game = get_akinator_game(
+        user_id
+    )
+
+    if not game:
+
+        update_akinator_message(
+
+            application_id,
+
+            interaction_token,
+
+            {
+                "content": (
+                    "❌ **You don't have an active Akinator game.**\n\n"
+                    "Use `/akinator` to start one."
+                ),
+                "embeds": [],
+                "components": []
+            }
+
+        )
+
+        return
+
+    lock = game["lock"]
+
+    # Prevent two Discord clicks arriving at nearly
+    # the same time from corrupting the Akinator session.
+
+    with lock:
+
+        aki = game["aki"]
+        theme = game["theme"]
+
+        try:
+
+            aki.answer(
+                answer
+            )
+
+            if getattr(
+                aki,
+                "finished",
+                False
+            ):
+
+                payload = build_akinator_result_payload(
+                    aki,
+                    theme
+                )
+
+                update_akinator_message(
+                    application_id,
+                    interaction_token,
+                    payload
+                )
+
+                return
+
+            payload = build_akinator_question_payload(
+                aki,
+                theme
+            )
+
+            update_akinator_message(
+                application_id,
+                interaction_token,
+                payload
+            )
+
+        except Exception as error:
+
+            print(
+                "Akinator answer exception:",
+                repr(error)
+            )
+
+            update_akinator_message(
+
+                application_id,
+
+                interaction_token,
+
+                {
+                    "content": (
+                        "❌ **Akinator hit an error.**\n\n"
+                        "The game has been ended. Use `/akinator` "
+                        "to start a new one."
+                    ),
+                    "embeds": [],
+                    "components": []
+                }
+
+            )
+
+            delete_akinator_game(
+                user_id
+            )
 
 
 # ============================================================
@@ -825,9 +857,7 @@ def chess_content(
 ):
 
     if extra:
-
         return extra
-
 
     if game.finished:
 
@@ -838,21 +868,14 @@ def chess_content(
                 "Neither player gets bragging rights."
             )
 
-
         return (
-
             f"🏆 **{game.winner_name} wins!**\n"
             "Checkmate."
-
         )
 
-
     return (
-
         f"♟️ **{game.current_player_name}'s turn.**\n"
-
         "Select a piece, then select its destination."
-
     )
 
 
@@ -860,22 +883,18 @@ def chess_content(
 # CHESS COMPONENTS
 # ============================================================
 
-def build_chess_components(
-    game
-):
+def build_chess_components(game):
 
     if game.finished:
 
         return [
 
             {
-
                 "type": 1,
 
                 "components": [
 
                     {
-
                         "type": 2,
 
                         "style": 2,
@@ -885,25 +904,16 @@ def build_chess_components(
 
                         "custom_id":
                         "chess_new"
-
                     }
 
                 ]
-
             }
 
         ]
 
-
     rows = []
 
-
-    # ========================================================
-    # PIECE SELECT
-    # ========================================================
-
     source_options = []
-
 
     if game.current_player_id:
 
@@ -913,30 +923,18 @@ def build_chess_components(
                 square
             )
 
-
             if not piece:
-
                 continue
 
-
-            if piece.color != (
-                game.board.turn
-            ):
-
+            if piece.color != game.board.turn:
                 continue
 
-
-            legal = (
-                game.legal_destinations(
-                    square
-                )
+            legal = game.legal_destinations(
+                square
             )
 
-
             if not legal:
-
                 continue
-
 
             source_options.append({
 
@@ -947,14 +945,11 @@ def build_chess_components(
                 str(square),
 
                 "description": (
-
                     f"{piece.symbol()} • "
                     f"{len(legal)} legal move(s)"
-
                 )
 
             })
-
 
     if source_options:
 
@@ -965,7 +960,6 @@ def build_chess_components(
             "components": [
 
                 {
-
                     "type": 3,
 
                     "custom_id":
@@ -983,20 +977,12 @@ def build_chess_components(
 
         })
 
-
-    # ========================================================
-    # DESTINATION SELECT
-    # ========================================================
-
     if game.selected_square is not None:
 
         destination_options = []
 
-
-        for square in (
-            game.legal_destinations(
-                game.selected_square
-            )
+        for square in game.legal_destinations(
+            game.selected_square
         ):
 
             destination_options.append({
@@ -1012,21 +998,14 @@ def build_chess_components(
 
             })
 
-
         for index in range(
-
             0,
-
             len(destination_options),
-
             25
-
         ):
 
             if len(rows) >= 4:
-
                 break
-
 
             rows.append({
 
@@ -1038,15 +1017,9 @@ def build_chess_components(
 
                         "type": 3,
 
-                        "custom_id": (
-
-                            "chess_destination_"
-
-                            + str(
-                                index // 25
-                            )
-
-                        ),
+                        "custom_id":
+                        "chess_destination_"
+                        + str(index // 25),
 
                         "placeholder":
                         "Select destination",
@@ -1061,11 +1034,6 @@ def build_chess_components(
                 ]
 
             })
-
-
-    # ========================================================
-    # CONTROLS
-    # ========================================================
 
     if len(rows) < 5:
 
@@ -1107,7 +1075,6 @@ def build_chess_components(
 
         })
 
-
     return rows
 
 
@@ -1116,51 +1083,36 @@ def build_chess_components(
 # ============================================================
 
 def edit_chess_message(
-
     application_id,
-
     interaction_token,
-
     game,
-
     content
-
 ):
 
     webhook_url = original_message_url(
-
         application_id,
-
         interaction_token
-
     )
-
 
     image = render_board(
         game
     )
 
-
     if game.mode == "bot":
 
         players_text = (
-
             f"**{game.player1_name}** "
             f"vs "
             f"**BurstSay**"
-
         )
 
     else:
 
         players_text = (
-
             f"**{game.player1_name}** "
             f"♔ vs ♚ "
             f"**{game.player2_name}**"
-
         )
-
 
     payload = {
 
@@ -1187,17 +1139,13 @@ def edit_chess_message(
                 ),
 
                 "image": {
-
                     "url":
                     "attachment://chess.png"
-
                 },
 
                 "footer": {
-
                     "text":
                     "BurstSay Chess"
-
                 }
 
             }
@@ -1205,26 +1153,21 @@ def edit_chess_message(
         ],
 
         "components":
-        build_chess_components(
-            game
-        ),
+        build_chess_components(game),
 
         "attachments": [
 
             {
-
                 "id":
                 "0",
 
                 "filename":
                 "chess.png"
-
             }
 
         ]
 
     }
-
 
     try:
 
@@ -1233,54 +1176,35 @@ def edit_chess_message(
             webhook_url,
 
             data={
-
                 "payload_json":
-                json.dumps(
-                    payload
-                )
-
+                json.dumps(payload)
             },
 
             files={
-
                 "files[0]": (
-
                     "chess.png",
-
                     image,
-
                     "image/png"
-
                 )
-
             },
 
             timeout=30
 
         )
 
-
         if not response.ok:
 
             print(
-
                 "Chess update failed:",
-
                 response.status_code,
-
                 response.text
-
             )
-
 
     except Exception as error:
 
         print(
-
             "Chess update exception:",
-
             repr(error)
-
         )
 
 
@@ -1289,117 +1213,65 @@ def edit_chess_message(
 # ============================================================
 
 def find_guild_member(
-
     guild_id,
-
     username
-
 ):
 
     if not guild_id:
 
         return (
-
             None,
-
             "❌ **Player mode must be used inside a server.**\n"
             "Discord's guild member search is required to find the opponent."
-
         )
-
 
     username = username.strip()
 
-
-    # --------------------------------------------------------
-    # Mention support
-    # --------------------------------------------------------
-
     if (
-
         username.startswith("<@")
-
         and
-
         username.endswith(">")
-
     ):
 
         clean_id = (
-
             username
-
-            .replace(
-                "<@",
-                ""
-            )
-
-            .replace(
-                "!",
-                ""
-            )
-
-            .replace(
-                ">",
-                ""
-            )
-
+            .replace("<@", "")
+            .replace("!", "")
+            .replace(">", "")
         )
-
 
         if clean_id.isdigit():
 
             url = (
-
                 "https://discord.com/api/v10/guilds/"
-
                 f"{guild_id}/members/"
                 f"{clean_id}"
-
             )
-
 
             response = requests.get(
 
                 url,
 
                 headers={
-
                     "Authorization":
                     f"Bot {BOT_TOKEN}"
-
                 },
 
                 timeout=15
 
             )
 
-
             if response.ok:
 
                 return (
-
-                    response.json().get(
-                        "user"
-                    ),
-
+                    response.json().get("user"),
                     None
-
                 )
 
-
-    # --------------------------------------------------------
-    # Official Discord guild member search
-    # --------------------------------------------------------
-
     url = (
-
         "https://discord.com/api/v10/guilds/"
-
         f"{guild_id}/members/search"
-
     )
-
 
     try:
 
@@ -1408,63 +1280,44 @@ def find_guild_member(
             url,
 
             params={
-
                 "query":
                 username,
 
                 "limit":
                 100
-
             },
 
             headers={
-
                 "Authorization":
                 f"Bot {BOT_TOKEN}"
-
             },
 
             timeout=15
 
         )
 
-
     except Exception as error:
 
         return (
-
             None,
-
             f"❌ Member search failed: `{error}`"
-
         )
-
 
     if not response.ok:
 
         return (
-
             None,
-
             (
-
                 "❌ Discord couldn't search the server members.\n"
-
                 f"HTTP `{response.status_code}`"
-
             )
-
         )
-
 
     members = response.json()
 
-
     matches = []
 
-
     wanted = username.lower()
-
 
     for member in members:
 
@@ -1473,61 +1326,35 @@ def find_guild_member(
             {}
         )
 
-
         actual_username = (
-
-            user.get(
-                "username"
-            )
+            user.get("username")
             or
             ""
-
         ).lower()
-
 
         global_name = (
-
-            user.get(
-                "global_name"
-            )
+            user.get("global_name")
             or
             ""
-
         ).lower()
-
 
         nickname = (
-
-            member.get(
-                "nick"
-            )
+            member.get("nick")
             or
             ""
-
         ).lower()
 
-
         if (
-
-            actual_username
-            == wanted
-
+            actual_username == wanted
             or
-
-            global_name
-            == wanted
-
+            global_name == wanted
             or
-
-            nickname
-            == wanted
-
+            nickname == wanted
         ):
 
             matches.append(
                 user
             )
-
 
     if len(matches) == 1:
 
@@ -1536,26 +1363,18 @@ def find_guild_member(
             None
         )
 
-
     if len(matches) > 1:
 
         return (
-
             None,
-
             "❌ Multiple members matched that name. "
             "Use the exact username or @mention."
-
         )
 
-
     return (
-
         None,
-
         "❌ I couldn't find that player in this server.\n"
         "Use their exact Discord username or @mention."
-
     )
 
 
@@ -1563,9 +1382,7 @@ def find_guild_member(
 # ERROR RESPONSE
 # ============================================================
 
-def error_response(
-    message
-):
+def error_response(message):
 
     return jsonify({
 
@@ -1601,11 +1418,7 @@ def home():
 @app.post("/interactions")
 def interactions():
 
-    data = (
-        request.get_json()
-        or {}
-    )
-
+    data = request.get_json() or {}
 
     # ========================================================
     # PING
@@ -1614,9 +1427,7 @@ def interactions():
     if data.get("type") == 1:
 
         return jsonify({
-
             "type": 1
-
         })
 
 
@@ -1631,14 +1442,11 @@ def interactions():
             {}
         )
 
-
         name = command.get(
             "name"
         )
 
-
         options = {
-
             option["name"]:
             option.get("value")
 
@@ -1646,14 +1454,11 @@ def interactions():
                 "options",
                 []
             )
-
         }
-
 
         user_id = get_user_id(
             data
         )
-
 
         user_name = get_user_name(
             data
@@ -1694,7 +1499,6 @@ def interactions():
                 ""
             )
 
-
             count = max(
 
                 1,
@@ -1713,7 +1517,6 @@ def interactions():
                 )
 
             )
-
 
             return jsonify({
 
@@ -1814,7 +1617,7 @@ def interactions():
                                 "Play against BurstSay or another player.\n\n"
 
                                 "🧞 **/akinator**\n"
-                                "Let BurstSay guess a character, animal, or object.\n\n"
+                                "Let Akinator guess what you're thinking of.\n\n"
 
                                 "💣 **/nuke**\n"
                                 "Send the nuke message.\n\n"
@@ -1865,7 +1668,6 @@ def interactions():
 
             )
 
-
             threading.Thread(
 
                 target=send_delayed_nuke,
@@ -1888,11 +1690,8 @@ def interactions():
 
             ).start()
 
-
             return jsonify({
-
                 "type": 5
-
             })
 
 
@@ -1902,88 +1701,66 @@ def interactions():
 
         if name == "akinator":
 
-            selected_theme = options.get(
-                "theme",
-                "character"
-            )
-
-
-            theme = AKINATOR_THEMES.get(
-                selected_theme
-            )
-
-
-            if theme is None:
-
-                return error_response(
-                    "❌ Invalid Akinator category."
-                )
-
-
             if not user_id:
 
                 return error_response(
                     "❌ Could not identify you."
                 )
 
+            theme_option = options.get(
+                "type",
+                "characters"
+            )
 
-            if get_akinator_game(
-                user_id
-            ):
+            theme_map = {
 
-                return error_response(
+                "characters":
+                "c",
 
-                    "🧞 **You're already playing Akinator.**\n\n"
+                "animals":
+                "a",
 
-                    "Finish your current game first."
+                "objects":
+                "o"
 
-                )
+            }
 
+            theme = theme_map.get(
+                theme_option,
+                "c"
+            )
 
-            try:
+            # Discord needs the interaction acknowledged
+            # immediately. Akinator's network request can
+            # take longer than Discord's response window.
 
-                game = start_akinator(
+            threading.Thread(
+
+                target=start_akinator_game,
+
+                args=(
+
+                    data.get(
+                        "application_id"
+                    ),
+
+                    data.get(
+                        "token"
+                    ),
 
                     user_id,
 
                     theme
 
-                )
+                ),
 
-            except Exception as error:
+                daemon=True
 
-                print(
-                    "Akinator start error:",
-                    repr(error)
-                )
-
-                return error_response(
-
-                    "❌ **Akinator couldn't start.**\n\n"
-
-                    "The Akinator service may be temporarily unavailable."
-
-                )
-
+            ).start()
 
             return jsonify({
 
-                "type": 4,
-
-                "data":
-                akinator_question_data(
-
-                    game,
-
-                    user_id,
-
-                    AKINATOR_THEME_NAMES[
-                        theme
-                    ],
-
-                    intro=True
-
-                )
+                "type": 5
 
             })
 
@@ -2001,11 +1778,8 @@ def interactions():
                 "data": {
 
                     "content": (
-
                         "♟️ **BurstSay Chess**\n\n"
-
                         "Choose how you want to play."
-
                     ),
 
                     "components": [
@@ -2026,10 +1800,8 @@ def interactions():
                                     "Play vs Bot",
 
                                     "emoji": {
-
                                         "name":
                                         "🤖"
-
                                     },
 
                                     "custom_id":
@@ -2047,10 +1819,8 @@ def interactions():
                                     "Play vs Player",
 
                                     "emoji": {
-
                                         "name":
                                         "👤"
-
                                     },
 
                                     "custom_id":
@@ -2079,26 +1849,21 @@ def interactions():
     if data.get("type") == 3:
 
         custom_id = (
-
             data.get(
                 "data",
                 {}
             ).get(
                 "custom_id"
             )
-
         )
-
 
         user_id = get_user_id(
             data
         )
 
-
         user_name = get_user_name(
             data
         )
-
 
         if not user_id:
 
@@ -2109,444 +1874,162 @@ def interactions():
 
         # ====================================================
         # AKINATOR ANSWERS
+        #
+        # IMPORTANT:
+        # This MUST be before the chess game lookup.
+        # Otherwise Discord would try to treat an Akinator
+        # button like a chess button.
         # ====================================================
 
-        if custom_id.startswith(
-            "aki_answer:"
-        ):
+        AKINATOR_ANSWERS = {
 
-            parts = custom_id.split(
-                ":"
-            )
+            "akinator_yes":
+            "y",
+
+            "akinator_no":
+            "n",
+
+            "akinator_idk":
+            "i",
+
+            "akinator_probably":
+            "p",
+
+            "akinator_probably_not":
+            "pn"
+
+        }
 
 
-            if len(parts) != 3:
-
-                return error_response(
-                    "❌ Invalid Akinator button."
-                )
-
-
-            action = parts[1]
-
-            button_user_id = parts[2]
-
-
-            if str(user_id) != str(
-                button_user_id
-            ):
-
-                return error_response(
-
-                    "🔒 **This isn't your Akinator game.**\n"
-
-                    "Only the player who started it can answer."
-
-                )
-
+        if custom_id in AKINATOR_ANSWERS:
 
             game = get_akinator_game(
                 user_id
             )
 
-
             if not game:
 
                 return error_response(
-
-                    "❌ **Your Akinator game no longer exists.**\n\n"
-
-                    "Start a new game with `/akinator`."
-
+                    "❌ **You don't have an active Akinator game.**\n"
+                    "Use `/akinator` to start one."
                 )
 
+            threading.Thread(
 
-            answer_map = {
+                target=process_akinator_answer,
 
-                "yes":
-                "y",
+                args=(
 
-                "no":
-                "n",
+                    data.get(
+                        "application_id"
+                    ),
 
-                "idk":
-                "i",
-
-                "probably":
-                "p",
-
-                "probably_not":
-                "pn"
-
-            }
-
-
-            answer = answer_map.get(
-                action
-            )
-
-
-            if answer is None:
-
-                return error_response(
-                    "❌ Invalid Akinator answer."
-                )
-
-
-            try:
-
-                game.answer(
-                    answer
-                )
-
-            except Exception as error:
-
-                print(
-
-                    "Akinator answer error:",
-
-                    repr(error)
-
-                )
-
-
-                delete_akinator_game(
-                    user_id
-                )
-
-
-                return error_response(
-
-                    "❌ Akinator encountered an error.\n\n"
-
-                    "Start a new game with `/akinator`."
-
-                )
-
-
-            try:
-
-                progression = float(
-                    getattr(
-                        game,
-                        "progression",
-                        0
-                    )
-                )
-
-            except Exception:
-
-                progression = 0
-
-
-            # ------------------------------------------------
-            # MAKE A GUESS
-            # ------------------------------------------------
-
-            if (
-
-                getattr(
-                    game,
-                    "finished",
-                    False
-                )
-
-                or
-
-                progression >= 85
-
-            ):
-
-                try:
-
-                    game.win()
-
-                except Exception as error:
-
-                    print(
-
-                        "Akinator win error:",
-
-                        repr(error)
-
-                    )
-
-
-                    delete_akinator_game(
-                        user_id
-                    )
-
-
-                    return error_response(
-
-                        "❌ Akinator couldn't make a guess.\n\n"
-
-                        "Start another game with `/akinator`."
-
-                    )
-
-
-                return jsonify({
-
-                    "type": 7,
-
-                    "data":
-                    akinator_guess_data(
-
-                        game,
-
-                        user_id
-
-                    )
-
-                })
-
-
-            # ------------------------------------------------
-            # NEXT QUESTION
-            # ------------------------------------------------
-
-            theme = getattr(
-
-                game,
-
-                "theme",
-
-                "c"
-
-            )
-
-
-            theme_name = (
-
-                AKINATOR_THEME_NAMES.get(
-
-                    theme,
-
-                    "Akinator"
-
-                )
-
-            )
-
-
-            return jsonify({
-
-                "type": 7,
-
-                "data":
-                akinator_question_data(
-
-                    game,
+                    data.get(
+                        "token"
+                    ),
 
                     user_id,
 
-                    theme_name
+                    AKINATOR_ANSWERS[
+                        custom_id
+                    ]
 
-                )
+                ),
+
+                daemon=True
+
+            ).start()
+
+            # Acknowledge the button immediately.
+
+            return jsonify({
+                "type": 6
+            })
+
+
+        # ====================================================
+        # AKINATOR END
+        # ====================================================
+
+        if custom_id == "akinator_end":
+
+            delete_akinator_game(
+                user_id
+            )
+
+            return jsonify({
+
+                "type": 4,
+
+                "data": {
+
+                    "content":
+                    "🛑 **Akinator game ended.**",
+
+                    "embeds":
+                    [],
+
+                    "components":
+                    []
+
+                }
 
             })
 
 
         # ====================================================
-        # AKINATOR GUESS
+        # AKINATOR RESTART
         # ====================================================
 
-        if custom_id.startswith(
-            "aki_guess:"
-        ):
-
-            parts = custom_id.split(
-                ":"
-            )
-
-
-            if len(parts) != 3:
-
-                return error_response(
-                    "❌ Invalid Akinator guess button."
-                )
-
-
-            result = parts[1]
-
-            button_user_id = parts[2]
-
-
-            if str(user_id) != str(
-                button_user_id
-            ):
-
-                return error_response(
-
-                    "🔒 **This isn't your Akinator game.**"
-
-                )
-
+        if custom_id == "akinator_restart":
 
             game = get_akinator_game(
                 user_id
             )
 
-
             if not game:
 
                 return error_response(
-
-                    "❌ **Your Akinator game has expired.**"
-
+                    "❌ Your previous Akinator game no longer exists."
                 )
 
+            theme = game["theme"]
 
-            # ------------------------------------------------
-            # CORRECT
-            # ------------------------------------------------
+            delete_akinator_game(
+                user_id
+            )
 
-            if result == "yes":
+            threading.Thread(
 
-                guessed_name = (
+                target=start_akinator_game,
 
-                    getattr(
+                args=(
 
-                        game,
+                    data.get(
+                        "application_id"
+                    ),
 
-                        "name_proposition",
+                    data.get(
+                        "token"
+                    ),
 
-                        "your answer"
+                    user_id,
 
-                    )
+                    theme
 
-                )
+                ),
 
+                daemon=True
 
-                delete_akinator_game(
-                    user_id
-                )
+            ).start()
 
-
-                return jsonify({
-
-                    "type": 7,
-
-                    "data": {
-
-                        "content": (
-
-                            "🎯 **I GOT IT!**\n\n"
-
-                            f"🧞 I guessed "
-                            f"**{guessed_name}**.\n\n"
-
-                            "Humanity remains predictable. 💀"
-
-                        ),
-
-                        "components":
-                        []
-
-                    }
-
-                })
-
-
-            # ------------------------------------------------
-            # WRONG
-            # ------------------------------------------------
-
-            if result == "no":
-
-                theme = getattr(
-
-                    game,
-
-                    "theme",
-
-                    "c"
-
-                )
-
-
-                try:
-
-                    new_game = (
-                        akinator.Akinator()
-                    )
-
-
-                    new_game.start_game(
-                        theme=theme
-                    )
-
-
-                    set_akinator_game(
-
-                        user_id,
-
-                        new_game
-
-                    )
-
-
-                    theme_name = (
-
-                        AKINATOR_THEME_NAMES.get(
-
-                            theme,
-
-                            "Akinator"
-
-                        )
-
-                    )
-
-
-                    return jsonify({
-
-                        "type": 7,
-
-                        "data":
-                        akinator_question_data(
-
-                            new_game,
-
-                            user_id,
-
-                            theme_name,
-
-                            intro=False
-
-                        )
-
-                    })
-
-
-                except Exception as error:
-
-                    print(
-
-                        "Akinator restart error:",
-
-                        repr(error)
-
-                    )
-
-
-                    delete_akinator_game(
-                        user_id
-                    )
-
-
-                    return error_response(
-
-                        "❌ I couldn't continue the game.\n\n"
-
-                        "Try `/akinator` again."
-
-                    )
+            return jsonify({
+                "type": 5
+            })
 
 
         # ====================================================
-        # BOT MODE
+        # CHESS BOT MODE
         # ====================================================
 
         if custom_id == "chess_mode_bot":
@@ -2554,7 +2037,6 @@ def interactions():
             delete_game(
                 user_id
             )
-
 
             game = create_game(
 
@@ -2568,11 +2050,9 @@ def interactions():
 
             )
 
-
             if game.player_color == chess.BLACK:
 
                 game.make_bot_move()
-
 
             threading.Thread(
 
@@ -2600,16 +2080,13 @@ def interactions():
 
             ).start()
 
-
             return jsonify({
-
                 "type": 5
-
             })
 
 
         # ====================================================
-        # PLAYER MODE
+        # CHESS PLAYER MODE
         # ====================================================
 
         if custom_id == "chess_mode_player":
@@ -2672,7 +2149,7 @@ def interactions():
 
 
         # ====================================================
-        # ACCEPT
+        # CHESS ACCEPT
         # ====================================================
 
         if custom_id == "chess_accept":
@@ -2685,16 +2162,12 @@ def interactions():
                     )
                 )
 
-
             if not invite:
 
                 return error_response(
-
                     "❌ This chess invitation "
                     "has expired or was already used."
-
                 )
-
 
             if invite["expires"] < time.time():
 
@@ -2705,38 +2178,27 @@ def interactions():
                         None
                     )
 
-
                 return error_response(
-
                     "❌ This chess invitation has expired."
-
                 )
-
 
             challenger_id = (
                 invite["challenger_id"]
             )
 
-
             challenger_name = (
                 invite["challenger_name"]
             )
 
-
-            opponent_name = (
-                user_name
-            )
-
+            opponent_name = user_name
 
             delete_game(
                 challenger_id
             )
 
-
             delete_game(
                 user_id
             )
-
 
             game = create_game(
 
@@ -2757,17 +2219,12 @@ def interactions():
 
             )
 
-
             with PENDING_INVITES_LOCK:
 
                 PENDING_INVITES.pop(
-
                     str(user_id),
-
                     None
-
                 )
-
 
             threading.Thread(
 
@@ -2795,16 +2252,13 @@ def interactions():
 
             ).start()
 
-
             return jsonify({
-
                 "type": 5
-
             })
 
 
         # ====================================================
-        # DECLINE
+        # CHESS DECLINE
         # ====================================================
 
         if custom_id == "chess_decline":
@@ -2812,13 +2266,9 @@ def interactions():
             with PENDING_INVITES_LOCK:
 
                 PENDING_INVITES.pop(
-
                     str(user_id),
-
                     None
-
                 )
-
 
             return jsonify({
 
@@ -2838,17 +2288,12 @@ def interactions():
 
 
         # ====================================================
-        # GET GAME
+        # GET CHESS GAME
         # ====================================================
 
         game = get_game(
             user_id
         )
-
-
-        # ----------------------------------------------------
-        # SECURITY CHECK
-        # ----------------------------------------------------
 
         if not game:
 
@@ -2858,7 +2303,6 @@ def interactions():
                 "Only the two players can control it."
 
             )
-
 
         if not game.is_player(
             user_id
@@ -2873,7 +2317,7 @@ def interactions():
 
 
         # ====================================================
-        # SOURCE
+        # CHESS SOURCE
         # ====================================================
 
         if custom_id == "chess_source":
@@ -2883,14 +2327,10 @@ def interactions():
             ):
 
                 return error_response(
-
                     "⏳ **It's the other player's turn.**"
-
                 )
 
-
             values = (
-
                 data.get(
                     "data",
                     {}
@@ -2898,16 +2338,13 @@ def interactions():
                     "values",
                     []
                 )
-
             )
-
 
             if not values:
 
                 return error_response(
                     "❌ Select a piece."
                 )
-
 
             try:
 
@@ -2921,48 +2358,33 @@ def interactions():
                     "❌ Invalid square."
                 )
 
-
             piece = game.board.piece_at(
                 square
             )
 
-
             if not piece:
 
                 return error_response(
-
                     "❌ There isn't a piece there."
-
                 )
-
 
             if piece.color != game.board.turn:
 
                 return error_response(
-
                     "❌ That's not your piece."
-
                 )
 
-
-            legal = (
-                game.legal_destinations(
-                    square
-                )
+            legal = game.legal_destinations(
+                square
             )
-
 
             if not legal:
 
                 return error_response(
-
                     "❌ That piece has no legal moves."
-
                 )
 
-
             game.selected_square = square
-
 
             threading.Thread(
 
@@ -2981,11 +2403,8 @@ def interactions():
                     game,
 
                     (
-
-                        f"♟️ **{square_name(square)} "
-                        "selected.**\n"
+                        f"♟️ **{square_name(square)} selected.**\n"
                         "Choose a destination."
-
                     )
 
                 ),
@@ -2994,16 +2413,13 @@ def interactions():
 
             ).start()
 
-
             return jsonify({
-
                 "type": 6
-
             })
 
 
         # ====================================================
-        # DESTINATION
+        # CHESS DESTINATION
         # ====================================================
 
         if custom_id.startswith(
@@ -3015,23 +2431,16 @@ def interactions():
             ):
 
                 return error_response(
-
                     "⏳ **It's the other player's turn.**"
-
                 )
-
 
             if game.selected_square is None:
 
                 return error_response(
-
                     "❌ Select a piece first."
-
                 )
 
-
             values = (
-
                 data.get(
                     "data",
                     {}
@@ -3039,16 +2448,13 @@ def interactions():
                     "values",
                     []
                 )
-
             )
-
 
             if not values:
 
                 return error_response(
                     "❌ Select a destination."
                 )
-
 
             try:
 
@@ -3062,11 +2468,9 @@ def interactions():
                     "❌ Invalid destination."
                 )
 
-
             from_square = (
                 game.selected_square
             )
-
 
             success, result = (
                 game.make_player_move(
@@ -3080,9 +2484,7 @@ def interactions():
                 )
             )
 
-
             game.selected_square = None
-
 
             if not success:
 
@@ -3110,11 +2512,8 @@ def interactions():
 
                 ).start()
 
-
                 return jsonify({
-
                     "type": 6
-
                 })
 
 
@@ -3123,19 +2522,12 @@ def interactions():
             # ------------------------------------------------
 
             if (
-
                 game.mode == "bot"
-
                 and
-
                 not game.finished
-
             ):
 
-                bot_move = (
-                    game.make_bot_move()
-                )
-
+                bot_move = game.make_bot_move()
 
                 if game.finished:
 
@@ -3156,7 +2548,6 @@ def interactions():
 
                     )
 
-
             # ------------------------------------------------
             # Player mode
             # ------------------------------------------------
@@ -3167,13 +2558,10 @@ def interactions():
                     game
                 )
 
-
                 if game.finished:
 
-                    content = (
-                        chess_content(
-                            game
-                        )
+                    content = chess_content(
+                        game
                     )
 
                 else:
@@ -3186,7 +2574,6 @@ def interactions():
                         f"{chess_content(game)}"
 
                     )
-
 
             threading.Thread(
 
@@ -3212,16 +2599,13 @@ def interactions():
 
             ).start()
 
-
             return jsonify({
-
                 "type": 6
-
             })
 
 
         # ====================================================
-        # RESIGN
+        # CHESS RESIGN
         # ====================================================
 
         if custom_id == "chess_resign":
@@ -3229,7 +2613,6 @@ def interactions():
             game.resign(
                 user_id
             )
-
 
             threading.Thread(
 
@@ -3248,11 +2631,8 @@ def interactions():
                     game,
 
                     (
-
                         f"🏳️ **{user_name} resigned.**\n\n"
-
                         f"🏆 **{game.winner_name} wins!**"
-
                     )
 
                 ),
@@ -3261,16 +2641,13 @@ def interactions():
 
             ).start()
 
-
             return jsonify({
-
                 "type": 6
-
             })
 
 
         # ====================================================
-        # NEW GAME
+        # CHESS NEW GAME
         # ====================================================
 
         if custom_id == "chess_new":
@@ -3279,13 +2656,11 @@ def interactions():
                 game.player1_id
             )
 
-
             if game.player2_id:
 
                 delete_game(
                     game.player2_id
                 )
-
 
             return jsonify({
 
@@ -3294,10 +2669,8 @@ def interactions():
                 "data": {
 
                     "content": (
-
                         "♟️ The previous game has ended.\n"
                         "Use `/chess` to start another game."
-
                     ),
 
                     "components":
@@ -3315,16 +2688,13 @@ def interactions():
     if data.get("type") == 5:
 
         custom_id = (
-
             data.get(
                 "data",
                 {}
             ).get(
                 "custom_id"
             )
-
         )
-
 
         if custom_id == "chess_player_modal":
 
@@ -3332,19 +2702,15 @@ def interactions():
                 data
             )
 
-
             challenger_name = get_user_name(
                 data
             )
-
 
             guild_id = data.get(
                 "guild_id"
             )
 
-
             modal_components = (
-
                 data.get(
                     "data",
                     {}
@@ -3352,51 +2718,32 @@ def interactions():
                     "components",
                     []
                 )
-
             )
 
-
             opponent_username = ""
-
 
             try:
 
                 opponent_username = (
-
                     modal_components[0]
-
                     ["components"][0]
-
                     ["value"]
-
                     .strip()
-
                 )
 
             except Exception:
-
                 pass
-
 
             if not opponent_username:
 
                 return error_response(
-
                     "❌ Enter an opponent username."
-
                 )
 
-
-            opponent, error = (
-                find_guild_member(
-
-                    guild_id,
-
-                    opponent_username
-
-                )
+            opponent, error = find_guild_member(
+                guild_id,
+                opponent_username
             )
-
 
             if error:
 
@@ -3404,55 +2751,39 @@ def interactions():
                     error
                 )
 
-
             opponent_id = str(
                 opponent["id"]
             )
-
 
             if opponent_id == str(
                 challenger_id
             ):
 
                 return error_response(
-
                     "❌ You can't challenge yourself."
-
                 )
 
-
-            if opponent.get(
-                "bot"
-            ):
+            if opponent.get("bot"):
 
                 return error_response(
-
                     "❌ You can't challenge a bot."
-
                 )
-
 
             if get_game(
                 challenger_id
             ):
 
                 return error_response(
-
                     "❌ You are already in a chess game."
-
                 )
-
 
             if get_game(
                 opponent_id
             ):
 
                 return error_response(
-
                     "❌ That player is already in a chess game."
-
                 )
-
 
             with PENDING_INVITES_LOCK:
 
@@ -3473,7 +2804,6 @@ def interactions():
                     time.time() + 300
 
                 }
-
 
             return jsonify({
 
@@ -3539,7 +2869,7 @@ def interactions():
 
                 }
 
-            )
+            })
 
 
     # ========================================================
@@ -3567,19 +2897,13 @@ def interactions():
 if __name__ == "__main__":
 
     port = int(
-
         os.getenv(
             "PORT",
             "10000"
         )
-
     )
 
-
     app.run(
-
         host="0.0.0.0",
-
         port=port
-
     )
