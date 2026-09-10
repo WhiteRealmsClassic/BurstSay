@@ -146,12 +146,14 @@ def verify_discord_request():
     body = request.get_data()
 
     try:
+
         verify_key.verify(
             timestamp.encode() + body,
             bytes.fromhex(signature)
         )
 
     except Exception:
+
         return jsonify({
             "error": "Invalid request signature"
         }), 401
@@ -273,44 +275,15 @@ def original_message_url(
 
 
 # ============================================================
-# ============================================================
 # AKINATOR
 # ============================================================
-# ============================================================
 
-def create_akinator_instance(theme):
+def create_akinator_instance():
 
-    """
-    Create an Akinator instance.
+    # Current akinator 2.x API:
+    # theme is supplied to start_game(), not Akinator().
 
-    The current package documents the themes as:
-        c = characters
-        a = animals
-        o = objects
-    """
-
-    try:
-
-        aki = akinator.Akinator(
-            theme=theme
-        )
-
-        return aki
-
-    except TypeError:
-
-        # Compatibility fallback for builds where the
-        # constructor does not accept theme directly.
-
-        aki = akinator.Akinator()
-
-        if hasattr(aki, "theme"):
-
-            aki.theme = theme
-
-            return aki
-
-        raise
+    return akinator.Akinator()
 
 
 def get_akinator_game(user_id):
@@ -673,20 +646,19 @@ def start_akinator_game(
 
     try:
 
-        # Remove an old game first.
-
         delete_akinator_game(
             user_id
         )
 
-        aki = create_akinator_instance(
-            theme
+        aki = create_akinator_instance()
+
+        # IMPORTANT:
+        # Current akinator 2.x API requires the theme here.
+
+        aki.start_game(
+            language="en",
+            theme=theme
         )
-
-        # start_game() performs network communication,
-        # so this MUST happen in a background thread.
-
-        aki.start_game()
 
         save_akinator_game(
             user_id,
@@ -711,6 +683,13 @@ def start_akinator_game(
             "Akinator start exception:",
             repr(error)
         )
+
+        if error.__cause__:
+
+            print(
+                "Akinator underlying exception:",
+                repr(error.__cause__)
+            )
 
         delete_akinator_game(
             user_id
@@ -773,9 +752,6 @@ def process_akinator_answer(
 
     lock = game["lock"]
 
-    # Prevent two Discord clicks arriving at nearly
-    # the same time from corrupting the Akinator session.
-
     with lock:
 
         aki = game["aki"]
@@ -823,6 +799,13 @@ def process_akinator_answer(
                 "Akinator answer exception:",
                 repr(error)
             )
+
+            if error.__cause__:
+
+                print(
+                    "Akinator answer underlying exception:",
+                    repr(error.__cause__)
+                )
 
             update_akinator_message(
 
@@ -1730,10 +1713,6 @@ def interactions():
                 "c"
             )
 
-            # Discord needs the interaction acknowledged
-            # immediately. Akinator's network request can
-            # take longer than Discord's response window.
-
             threading.Thread(
 
                 target=start_akinator_game,
@@ -1874,11 +1853,6 @@ def interactions():
 
         # ====================================================
         # AKINATOR ANSWERS
-        #
-        # IMPORTANT:
-        # This MUST be before the chess game lookup.
-        # Otherwise Discord would try to treat an Akinator
-        # button like a chess button.
         # ====================================================
 
         AKINATOR_ANSWERS = {
@@ -1939,8 +1913,6 @@ def interactions():
                 daemon=True
 
             ).start()
-
-            # Acknowledge the button immediately.
 
             return jsonify({
                 "type": 6
