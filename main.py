@@ -5,6 +5,7 @@ import time
 import threading
 
 import requests
+import cloudscraper
 
 from flask import Flask, request, jsonify
 
@@ -280,10 +281,44 @@ def original_message_url(
 
 def create_akinator_instance():
 
-    # Current akinator 2.x API:
-    # theme is supplied to start_game(), not Akinator().
+    # Akinator blocks some requests from cloud/server IPs.
+    # Use CloudScraper with browser-like headers.
 
-    return akinator.Akinator()
+    session = cloudscraper.create_scraper(
+        browser={
+            "browser": "chrome",
+            "platform": "darwin",
+            "mobile": False
+        }
+    )
+
+    session.headers.update({
+
+        "User-Agent":
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/150.0.0.0 Safari/537.36",
+
+        "Accept":
+        "application/json, text/plain, */*",
+
+        "Accept-Language":
+        "en-US,en;q=0.9",
+
+        "Referer":
+        "https://en.akinator.com/",
+
+        "Origin":
+        "https://en.akinator.com",
+
+        "Connection":
+        "keep-alive"
+
+    })
+
+    return akinator.Akinator(
+        session=session
+    )
 
 
 def get_akinator_game(user_id):
@@ -651,9 +686,6 @@ def start_akinator_game(
         )
 
         aki = create_akinator_instance()
-
-        # IMPORTANT:
-        # Current akinator 2.x API requires the theme here.
 
         aki.start_game(
             language="en",
