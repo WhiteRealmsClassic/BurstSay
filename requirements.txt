@@ -5,3 +5,4 @@ gunicorn
 requests
 python-chess
 Pillow
+akinator>=2.1.0
