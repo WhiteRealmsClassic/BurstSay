@@ -3,3 +3,5 @@ PyNaCl
 python-dotenv
 gunicorn
 requests
+python-chess
+Pillow
