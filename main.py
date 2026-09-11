@@ -25,6 +25,7 @@ from chess_game import (
 load_dotenv()
 PUBLIC_KEY = os.getenv("DISCORD_PUBLIC_KEY")
 BOT_TOKEN = os.getenv("DISCORD_TOKEN")
+APPLICATION_ID = os.getenv("APPLICATION_ID")
 if not PUBLIC_KEY:
     raise RuntimeError("DISCORD_PUBLIC_KEY is missing from .env")
 if not BOT_TOKEN:
@@ -621,6 +622,88 @@ def process_akinator_answer(
                 user_id
             )
 # ============================================================
+# ROAST BACKGROUND
+# ============================================================
+def edit_roast_message(
+    application_id,
+    interaction_token,
+    payload
+):
+    webhook_url = original_message_url(
+        application_id,
+        interaction_token
+    )
+    try:
+        response = requests.patch(
+            webhook_url,
+            headers={
+                "Authorization":
+                f"Bot {BOT_TOKEN}",
+                "Content-Type":
+                "application/json"
+            },
+            json=payload,
+            timeout=15
+        )
+        if not response.ok:
+            print(
+                "Roast update failed:",
+                response.status_code,
+                response.text
+            )
+    except Exception as error:
+        print(
+            "Roast update exception:",
+            repr(error)
+        )
+def generate_roast_background(
+    application_id,
+    interaction_token,
+    target_id,
+    guild_id
+):
+    try:
+        roast_text = generate_roast(
+            target_id,
+            guild_id=guild_id
+        )
+    except Exception as error:
+        print(
+            "Roast generation exception:",
+            repr(error)
+        )
+        edit_roast_message(
+            application_id,
+            interaction_token,
+            {
+                "content": (
+                    "❌ **Roast failed.**\n"
+                    "Something went wrong generating the roast."
+                )
+            }
+        )
+        return
+    if not roast_text:
+        edit_roast_message(
+            application_id,
+            interaction_token,
+            {
+                "content": (
+                    "❌ **Roast failed.**\n"
+                    "No roast was generated. Try again in a moment."
+                )
+            }
+        )
+        return
+    edit_roast_message(
+        application_id,
+        interaction_token,
+        {
+            "content":
+            f"<@{target_id}>\n\n{roast_text}"
+        }
+    )
+# ============================================================
 # CHESS CONTENT
 # ============================================================
 def chess_content(
@@ -1211,36 +1294,25 @@ def interactions():
                 target_id
             ).strip()
 
-            try:
-                roast_text = generate_roast(
+            threading.Thread(
+                target=generate_roast_background,
+                args=(
+                    APPLICATION_ID,
+                    data.get(
+                        "token"
+                    ),
                     target_id,
-                    guild_id=data.get(
+                    data.get(
                         "guild_id"
                     )
-                )
-            except Exception as error:
-                print(
-                    "Roast generation exception:",
-                    repr(error)
-                )
-
-                return error_response(
-                    "❌ **Roast failed.**\n"
-                    "Something went wrong generating the roast. "
-                    "Try again in a moment."
-                )
-
-            if not roast_text:
-                return error_response(
-                    "❌ **Roast failed.**\n"
-                    "No roast was generated. Try again in a moment."
-                )
+                ),
+                daemon=True
+            ).start()
 
             return jsonify({
-                "type": 4,
+                "type": 5,
                 "data": {
-                    "content":
-                    f"<@{target_id}>\n\n{roast_text}"
+                    "flags": 0
                 }
             })
         # ====================================================
