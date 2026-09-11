@@ -7,3 +7,4 @@ python-chess
 Pillow
 akinator>=2.1.0
 cloudscraper
+google-genai
