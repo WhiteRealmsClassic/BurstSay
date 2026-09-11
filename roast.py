@@ -4,6 +4,7 @@ import sqlite3
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
 
+import requests
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
@@ -11,10 +12,6 @@ from google.genai import types
 
 load_dotenv()
 
-
-# ============================================================
-# CONFIG
-# ============================================================
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
@@ -24,45 +21,44 @@ if not GEMINI_API_KEY:
     )
 
 
+DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
+
+if not DISCORD_TOKEN:
+    raise RuntimeError(
+        "DISCORD_TOKEN is missing from .env"
+    )
+
+
 MODEL = os.getenv(
     "GEMINI_MODEL",
     "gemini-3.7-flash"
 )
+
 
 DB_PATH = os.getenv(
     "ROAST_DB_PATH",
     "data/roasts.db"
 )
 
+
+DISCORD_API = "https://discord.com/api/v10"
+
 MAX_HISTORY = 40
 MAX_GENERATION_ATTEMPTS = 3
 
-
-# ============================================================
-# GEMINI
-# ============================================================
 
 client = genai.Client(
     api_key=GEMINI_API_KEY
 )
 
 
-# ============================================================
-# DATABASE
-# ============================================================
-
 def get_connection():
     directory = os.path.dirname(DB_PATH)
 
     if directory:
-        os.makedirs(
-            directory,
-            exist_ok=True
-        )
+        os.makedirs(directory, exist_ok=True)
 
-    connection = sqlite3.connect(
-        DB_PATH
-    )
+    connection = sqlite3.connect(DB_PATH)
 
     connection.execute(
         """
@@ -136,9 +132,79 @@ def save_roast(target_id, roast):
         connection.close()
 
 
-# ============================================================
-# TEXT NORMALIZATION
-# ============================================================
+def discord_headers():
+    return {
+        "Authorization":
+            f"Bot {DISCORD_TOKEN}",
+
+        "Content-Type":
+            "application/json",
+
+        "User-Agent":
+            "BurstSay/1.0"
+    }
+
+
+def get_public_profile(target_id):
+    response = requests.get(
+        f"{DISCORD_API}/users/{target_id}",
+        headers=discord_headers(),
+        timeout=15
+    )
+
+    if response.status_code == 404:
+        raise RuntimeError(
+            "That Discord user does not exist."
+        )
+
+    if response.status_code == 401:
+        raise RuntimeError(
+            "BurstSay's Discord token was rejected."
+        )
+
+    if not response.ok:
+        raise RuntimeError(
+            "Discord returned HTTP "
+            f"{response.status_code}."
+        )
+
+    user = response.json()
+
+    return {
+        "id": user.get("id"),
+        "username": user.get(
+            "username",
+            "Unknown"
+        ),
+        "global_name": user.get(
+            "global_name"
+        ),
+        "bot": bool(
+            user.get("bot", False)
+        )
+    }
+
+
+def get_server_context(guild_id, target_id):
+    if not guild_id:
+        return {}
+
+    response = requests.get(
+        f"{DISCORD_API}/guilds/"
+        f"{guild_id}/members/{target_id}",
+        headers=discord_headers(),
+        timeout=15
+    )
+
+    if not response.ok:
+        return {}
+
+    member = response.json()
+
+    return {
+        "nickname": member.get("nick")
+    }
+
 
 def normalize_text(text):
     text = text.lower()
@@ -164,10 +230,6 @@ def words(text):
     )
 
 
-# ============================================================
-# SIMILARITY
-# ============================================================
-
 def similarity(a, b):
     a_normalized = normalize_text(a)
     b_normalized = normalize_text(b)
@@ -183,6 +245,7 @@ def similarity(a, b):
 
     if not a_words or not b_words:
         word_score = 0.0
+
     else:
         intersection = len(
             a_words & b_words
@@ -214,14 +277,11 @@ def is_too_similar(
             candidate,
             previous
         ) >= 0.72:
+
             return True
 
     return False
 
-
-# ============================================================
-# CLEAN GEMINI OUTPUT
-# ============================================================
 
 def clean_roast(text):
     if not text:
@@ -258,14 +318,49 @@ def clean_roast(text):
     return text
 
 
-# ============================================================
-# PROMPT
-# ============================================================
-
 def build_prompt(
-    target_id,
+    profile,
     previous_roasts
 ):
+    username = profile.get(
+        "username",
+        "Unknown"
+    )
+
+    global_name = profile.get(
+        "global_name"
+    )
+
+    nickname = profile.get(
+        "nickname"
+    )
+
+    is_bot = profile.get(
+        "bot",
+        False
+    )
+
+    profile_lines = [
+        f"Username: {username}"
+    ]
+
+    if global_name:
+        profile_lines.append(
+            f"Display name: {global_name}"
+        )
+
+    if nickname:
+        profile_lines.append(
+            f"Server nickname: {nickname}"
+        )
+
+    profile_lines.append(
+        f"Account is a bot: {'yes' if is_bot else 'no'}"
+    )
+
+    profile_context = "\n".join(
+        profile_lines
+    )
 
     history_text = "\n".join(
         f"- {roast}"
@@ -282,53 +377,57 @@ def build_prompt(
 You are the roast writer for a Discord bot.
 
 Generate a short, genuinely funny roast aimed at
-the Discord user with ID {target_id}.
+the Discord user described below.
 
-The roast should sound like something a clever person
-would spontaneously say in a Discord conversation.
+PUBLIC DISCORD PROFILE:
 
-IMPORTANT STYLE RULES:
+{profile_context}
+
+Use the available profile information naturally.
+The username or display name can inspire wordplay,
+but do not pretend you know things that are not provided.
+
+STYLE:
 
 - Be witty, sharp, and conversational.
-- Make the joke feel specific and intentional.
+- Make the joke feel intentional.
+- Sound like a clever person talking in Discord.
 - Avoid generic AI roast templates.
 - Avoid repetitive "you're the human equivalent of..."
   constructions.
 - Avoid repetitive "bro is..." constructions.
 - Avoid generic insults with no joke behind them.
 - Don't explain the joke.
-- Don't say "here's your roast".
 - Don't mention being an AI.
 - Keep it to 1 or 2 sentences.
 - Make the punchline arrive naturally.
-- Vary sentence structure and comedic technique.
-- Don't use the same metaphor repeatedly.
+- Vary sentence structure.
+- Vary comedic techniques.
+- Don't reuse the same metaphor repeatedly.
 - Don't simply swap a few words from an old roast.
 - Keep it playful rather than genuinely hateful.
 - Do not target protected or sensitive personal traits.
+- Do not invent private information.
+- Do not make claims about someone's real-life identity,
+  health, family, location, or other sensitive information.
 
-Previous roasts used for this target:
+PREVIOUS ROASTS:
 
 {history_text}
 
 Your new roast MUST feel meaningfully different from
-all of the previous roasts.
+all previous roasts.
 
 Return ONLY the roast.
 """
 
 
-# ============================================================
-# GENERATION
-# ============================================================
-
 def generate_candidate(
-    target_id,
+    profile,
     previous_roasts
 ):
-
     prompt = build_prompt(
-        target_id,
+        profile,
         previous_roasts
     )
 
@@ -349,15 +448,26 @@ def generate_candidate(
     return roast
 
 
-# ============================================================
-# PUBLIC FUNCTION
-# ============================================================
-
-def generate_roast(target_id):
-
+def generate_roast(
+    target_id,
+    guild_id=None
+):
     target_id = str(
         target_id
     ).strip()
+
+    profile = get_public_profile(
+        target_id
+    )
+
+    server_context = get_server_context(
+        guild_id,
+        target_id
+    )
+
+    profile.update(
+        server_context
+    )
 
     previous_roasts = get_previous_roasts(
         target_id
@@ -368,9 +478,8 @@ def generate_roast(target_id):
     for attempt in range(
         MAX_GENERATION_ATTEMPTS
     ):
-
         candidate = generate_candidate(
-            target_id,
+            profile,
             previous_roasts
         )
 
@@ -387,21 +496,25 @@ def generate_roast(target_id):
         break
 
     if not best_candidate:
-
-        # One final generation with stronger
-        # uniqueness instructions.
         emergency_prompt = f"""
 Write ONE completely original, short Discord roast.
 
-Target Discord user ID:
-{target_id}
+Target username:
+{profile.get("username", "Unknown")}
+
+Display name:
+{profile.get("global_name", "Unknown")}
+
+Server nickname:
+{profile.get("nickname", "None")}
 
 Do NOT reuse any idea, metaphor, punchline,
 structure, or wording from these previous roasts:
 
 {chr(10).join(previous_roasts)}
 
-Make it clever, conversational, and concise.
+Make it clever, conversational, playful,
+and concise.
 
 Return ONLY the roast.
 """
