@@ -122,71 +122,6 @@ GLAZE_MESSAGES = [
 ]
 
 
-        # ====================================================
-        # STALK
-        # ====================================================
-
-        if name == "stalk":
-
-            target_id = options.get(
-                "userid"
-            )
-
-            if not target_id:
-                return error_response(
-                    "❌ You need to provide a Discord user ID."
-                )
-
-            target_id = str(
-                target_id
-            ).strip()
-
-            if (
-                not target_id.isdigit()
-                or len(target_id) < 15
-                or len(target_id) > 25
-            ):
-                return error_response(
-                    "❌ That doesn't look like a valid Discord user ID."
-                )
-
-            guild_id = data.get(
-                "guild_id"
-            )
-
-            guild_name = None
-
-            if guild_id:
-                guild = data.get(
-                    "guild"
-                )
-
-                if isinstance(guild, dict):
-                    guild_name = guild.get(
-                        "name"
-                    )
-
-            embed, error = build_stalk_embed(
-                BOT_TOKEN,
-                target_id,
-                guild_id,
-                guild_name
-            )
-
-            if error:
-                return error_response(
-                    f"❌ **Stalk failed**\n\n{error}"
-                )
-
-            return jsonify({
-                "type": 4,
-                "data": {
-                    "embeds": [
-                        embed
-                    ]
-                }
-            })
-
 # ============================================================
 # DISCORD VERIFICATION
 # ============================================================
@@ -1721,6 +1656,71 @@ def interactions():
 
                 }
 
+            })
+
+
+        # ====================================================
+        # STALK
+        # ====================================================
+
+        if name == "stalk":
+
+            target_id = options.get(
+                "userid"
+            )
+
+            if not target_id:
+                return error_response(
+                    "❌ You need to provide a Discord user ID."
+                )
+
+            target_id = str(
+                target_id
+            ).strip()
+
+            if (
+                not target_id.isdigit()
+                or len(target_id) < 15
+                or len(target_id) > 25
+            ):
+                return error_response(
+                    "❌ That doesn't look like a valid Discord user ID."
+                )
+
+            guild_id = data.get(
+                "guild_id"
+            )
+
+            guild_name = None
+
+            guild = data.get(
+                "guild"
+            )
+
+            if isinstance(guild, dict):
+                guild_name = guild.get(
+                    "name"
+                )
+
+            embed, error = build_stalk_embed(
+                BOT_TOKEN,
+                target_id,
+                guild_id,
+                guild_name
+            )
+
+            if error:
+                return error_response(
+                    f"❌ **Stalk failed**\n\n{error}"
+                )
+
+            return jsonify({
+                "type": 4,
+                "data": {
+                    "embeds": [
+                        embed
+                    ]
+                }
             })
 
 
