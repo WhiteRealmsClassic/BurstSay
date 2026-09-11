@@ -1199,42 +1199,43 @@ def interactions():
         # ====================================================
         if name == "roast":
             target_id = options.get(
-                "userid"
+                "user"
             )
+
             if not target_id:
                 return error_response(
-                    "❌ You need to provide a Discord user ID."
+                    "❌ You need to select a Discord user."
                 )
+
             target_id = str(
                 target_id
             ).strip()
-            if (
-                not target_id.isdigit()
-                or len(target_id) < 15
-                or len(target_id) > 25
-            ):
-                return error_response(
-                    "❌ That doesn't look like a valid Discord user ID."
-                )
+
             try:
                 roast_text = generate_roast(
-                    target_id
+                    target_id,
+                    guild_id=data.get(
+                        "guild_id"
+                    )
                 )
             except Exception as error:
                 print(
                     "Roast generation exception:",
                     repr(error)
                 )
+
                 return error_response(
                     "❌ **Roast failed.**\n"
                     "Something went wrong generating the roast. "
                     "Try again in a moment."
                 )
+
             if not roast_text:
                 return error_response(
                     "❌ **Roast failed.**\n"
                     "No roast was generated. Try again in a moment."
                 )
+
             return jsonify({
                 "type": 4,
                 "data": {
